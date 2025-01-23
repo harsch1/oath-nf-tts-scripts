@@ -7,7 +7,7 @@ edificesGUID = "1662f7"
 relicBagGUID = "c46336"
 shadowBagGUID = "1ce44a"
 siteBagGUID = "12dafe"
-curseDeckGUID = "28df64"
+curseDeckGUID = "505f2f"
 
 -- Objects for needed items.
 tableObj, atlasBox, edificeBag, relicBag, shadowBag, siteBag = nil, nil, nil, nil, nil, nil
@@ -637,9 +637,6 @@ function retrieve(zone)
             denizenNumber = denizenNumber+1
             shadowCount = shadowCount+1
         end
-    end
-    for _, obj in ipairs(atlasSlotBag.getObjects()) do
-        
         if dataTableContains(obj.tags, edificeTag) then
             atlasSlotBag.takeObject({
                 guid = obj.guid, 
@@ -649,13 +646,14 @@ function retrieve(zone)
             denizenNumber = denizenNumber+1
             edificeCount = edificeCount+1
         end
+    end
+    for _, obj in ipairs(atlasSlotBag.getObjects()) do
         if dataTableContains(obj.tags, siteTag) then
             atlasSlotBag.takeObject({
                 guid = obj.guid,
                 position = spawnPosition,
                 rotation = {x=0, y=180, z=0},
             })
-            break
         end
     end
     atlasSlotBag.setName(emptyAtlasSlotBagName)
