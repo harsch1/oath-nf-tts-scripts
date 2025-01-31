@@ -1,4 +1,4 @@
--- Atlas Box scripts written by harsch.  Last update:  12-18-2024
+-- Atlas Box scripts written by harsch.  Last update:  01-31-2025
 
 -- GUIDs for needed items. IF SOMETHING IS BROKEN LIKELY THESE ARE NO LONGER CORRECT
 tableGUID = "4ee1f2"
@@ -224,54 +224,53 @@ function setupAtlasBox(obj, color, alt_click)
             spawnRetryButton()
             return
         end
+        -- Gotta unlock the Atlas Box first
+        local wasUnlocked = atlasBox.hasTag(unlockedTag)
+        atlasBox.addTag(unlockedTag)
+        -- Take all 20 sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
+        for i = 1,20 do
+            local atlasSlotBag = atlasBox.takeObject({index = 20-i})
+            atlasSlotBag.putObject(getRandomSite())
+            local d6roll = math.random(1,6)
+            printToAll("Slot " .. i .. ", Roll " .. d6roll)
+            if d6roll == 1 then
+                atlasSlotBag.putObject(getRandomEdifice())
+                atlasSlotBag.putObject(getRandomShadow())
+            elseif d6roll == 3 then
+                atlasSlotBag.putObject(getRandomRelic())
+            elseif d6roll == 4 then
+                atlasSlotBag.putObject(getRandomRelic())
+                atlasSlotBag.putObject(getRandomRelic())
+            elseif d6roll == 5 then
+                atlasSlotBag.putObject(getRandomRelic())
+                atlasSlotBag.putObject(getRandomShadow())
+            elseif d6roll == 6 then
+                atlasSlotBag.putObject(getRandomRelic())
+                atlasSlotBag.putObject(getRandomRelic())
+                atlasSlotBag.putObject(getRandomShadow())
+            end
 
-        -- If edifice bag is empty
-        if #(edificeBag.getObjects()) == 0 then
-            printToAll("Please place all Edifices in the Edifice bag and try again.")
-        else
-            -- Gotta unlock the Atlas Box first
-            local wasUnlocked = atlasBox.hasTag(unlockedTag)
-            atlasBox.addTag(unlockedTag)
-            -- Take all 20 sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
-            for i = 1,20 do
-                local atlasSlotBag = atlasBox.takeObject({index = 20-i})
-                atlasSlotBag.putObject(getRandomSite())
-                local d6roll = math.random(1,6)
-                printToAll("Slot " .. i .. ", Roll " .. d6roll)
-                if d6roll == 1 then
-                    atlasSlotBag.putObject(getRandomEdifice())
-                elseif d6roll == 3 then
-                    atlasSlotBag.putObject(getRandomRelic())
-                elseif d6roll == 4 then
-                    atlasSlotBag.putObject(getRandomRelic())
-                    atlasSlotBag.putObject(getRandomRelic())
-                elseif d6roll == 5 then
-                    atlasSlotBag.putObject(getRandomRelic())
-                    atlasSlotBag.putObject(getRandomShadow())
-                elseif d6roll == 6 then
-                    atlasSlotBag.putObject(getRandomRelic())
-                    atlasSlotBag.putObject(getRandomRelic())
-                    atlasSlotBag.putObject(getRandomShadow())
-                end
-                -- Rename the slot bag and put it at the back of the Atlas Box
-                atlasSlotBag.setName(fullAtlasSlotBagName)
-                atlasBox.putObject(atlasSlotBag)
-            end
-            dealStartingSites()
-            
-            -- Clean up the setup button, mark setup as done and spawn the new buttons
-            removeButtonByLabel(self, setupButtonLabel)
-            self.addTag(chronicleCreatedTag)
-            destroyObject(siteBag)
-            for _,_ in ipairs(edificeBag.getObjects()) do
-                edificeBag.takeObject({rotation = {x=0,y=180,z=0}})
-            end
-            destroyObject(edificeBag)
-            printToAll("SETUP COMPLETE. Don't forget to add Edifices back to the corresponding suit decks before setting up the World Deck\n")
-            spawnAtlasButtons()
-            -- Lock the Atlas Box if it was locked before
-            if not wasUnlocked then atlasBox.removeTag(unlockedTag) end
+            -- Rename the slot bag and put it at the back of the Atlas Box
+            atlasSlotBag.setName(fullAtlasSlotBagName)
+            atlasBox.putObject(atlasSlotBag)
         end
+        dealStartingSites()
+        
+        -- Clean up the setup button, mark setup as done and spawn the new buttons
+        removeButtonByLabel(self, setupButtonLabel)
+        self.addTag(chronicleCreatedTag)
+        destroyObject(siteBag)
+        for _,_ in ipairs(edificeBag.getObjects()) do
+            edificeBag.takeObject({rotation = {x=0,y=180,z=0}})
+        end
+        destroyObject(edificeBag)
+        for _,_ in ipairs(relicBag.getObjects()) do
+            relicBag.takeObject({rotation = {x=0,y=180,z=180}, position = {x=13.6,y=2,z=-8.9}})
+        end
+        printToAll("SETUP COMPLETE. Don't forget to add Edifices back to the corresponding suit decks before setting up the World Deck\n")
+        spawnAtlasButtons()
+        -- Lock the Atlas Box if it was locked before
+        if not wasUnlocked then atlasBox.removeTag(unlockedTag) end
     end
 end
 
@@ -304,26 +303,26 @@ function dealStartingSites()
         local relicNumber = 0;
         local denizenNumber = 0;
         local atlasSlotBag = atlasBox.takeObject({index = 0})
+        -- Deal Sites 
         for _, obj in ipairs(atlasSlotBag.getObjects()) do
-            if dataTableContains(obj.tags, relicTag) then
+            if dataTableContains(obj.tags, "Site") then
                 atlasSlotBag.takeObject({
                     guid = obj.guid,
-                    position = getRelicPosition(getSitePosition(i), relicNumber),
-                    rotation = {x=180, y=0, z=0},
+                    position = getSitePosition(i),
+                    rotation = {x=0, y=180, z=0},
                 })
-                relicNumber = relicNumber+1
+                break
             end
-            if dataTableContains(obj.tags, edificeTag) or dataTableContains(obj.tags, shadowTag) then
-                if dataTableContains(obj.tags, shadowTag) then
-                    if getObjectFromGUID(curseDeckGUID) then
-                        getObjectFromGUID(curseDeckGUID).takeObject({
-                            position = vectorSum(getDenizenPosition(getSitePosition(i), denizenNumber), {x=0, y=0, z=0.55}),
-                            rotation = {x=180, y=math.random(0,1)*180, z=0},
-                        })
-                    else
-                        printToAll("Cannot find curse deck. Please place curses under shadow denizens")
-                    end
-                end
+        end
+        for _, obj in ipairs(atlasSlotBag.getObjects()) do
+            if dataTableContains(obj.tags, shadowTag) then
+                atlasSlotBag.takeObject({
+                    guid = obj.guid, 
+                    position = vectorSum(getShadowPosition(getSitePosition(i)), {x=0, y=0, z=-.9}),
+                    rotation = dataTableContains(obj.tags, shadowTag) and {x=0, y=180, z=0} or {x=180, y=0, z=0},
+                })
+            end
+            if dataTableContains(obj.tags, edificeTag) then
                 atlasSlotBag.takeObject({
                     guid = obj.guid, 
                     position = vectorSum(
@@ -334,15 +333,14 @@ function dealStartingSites()
                 denizenNumber = denizenNumber+1
             end
         end
-        -- Deal Sites after since they go on top
         for _, obj in ipairs(atlasSlotBag.getObjects()) do
-            if dataTableContains(obj.tags, "Site") then
+            if dataTableContains(obj.tags, relicTag) then
                 atlasSlotBag.takeObject({
                     guid = obj.guid,
-                    position = getSitePosition(i),
-                    rotation = {x=0, y=180, z=0},
+                    position = getRelicPosition(getSitePosition(i), relicNumber, denizenNumber),
+                    rotation = {x=180, y=0, z=0},
                 })
-                break
+                relicNumber = relicNumber+1
             end
         end
         -- Rename the bag to mark as empty
@@ -369,17 +367,23 @@ function getSitePosition(i)
 end
 
 -- Add relic position offset based on which number relic it is
-function getRelicPosition(position, relicNumber)
-    relicVector = {x = 0, y = -0.5, z = -1.3}
-    subsequentRelicPos = {x = 1.15*relicNumber, y = 0.25*relicNumber, z = 0}
-    return vectorSum(position, vectorSum(relicVector, subsequentRelicPos))
+function getRelicPosition(position, relicNumber, denizenNumber)
+    relicVector = {x = -0.15, y = -0.25, z = -1.3}
+    subsequentRelicPos = {x = 0, y = 0.25*relicNumber, z = 1.30*relicNumber}
+    return vectorSum(getDenizenPosition(position, denizenNumber), vectorSum(relicVector, subsequentRelicPos))
 end
 
--- Add denizen position offset based on which number relic it is
+-- Add denizen position offset based on which number denizen it is
 function getDenizenPosition(position, denizenNumber)
-    denizenVector = {x = 5.5, y = -0.25, z = 0.25}
-    subsequentDenizenPos = {x = 3.5*denizenNumber, y = 0, z = 0}
+    denizenVector = {x = 5.35, y = -0.25, z = 0}
+    subsequentDenizenPos = {x = 3.30*denizenNumber, y = 0, z = 0}
     return vectorSum(position, vectorSum(denizenVector, subsequentDenizenPos))
+end
+
+-- Add shadow position offset
+function getShadowPosition(position)
+    shadowVector = {x = -2.275, y = 10, z = 1.470}
+    return vectorSum(position, shadowVector)
 end
 
 -- Get Elements for creating Chronicle
@@ -620,21 +624,21 @@ function retrieve(zone)
     -- if i == d6roll then
     -- heldBag = atlasSlotBag
     for _, obj in ipairs(atlasSlotBag.getObjects()) do
-        if dataTableContains(obj.tags, relicTag) then
+        if dataTableContains(obj.tags, siteTag) then
             atlasSlotBag.takeObject({
                 guid = obj.guid,
-                position = getRelicPosition(spawnPosition, relicNumber),
-                rotation = {x=180, y=0, z=0},
+                position = spawnPosition,
+                rotation = {x=0, y=180, z=0},
             })
-            relicNumber = relicNumber+1
         end
+    end
+    for _, obj in ipairs(atlasSlotBag.getObjects()) do
         if dataTableContains(obj.tags, shadowTag) then
             atlasSlotBag.takeObject({
                 guid = obj.guid, 
-                position = getDenizenPosition(spawnPosition, denizenNumber),
-                rotation = {x=180, y=0, z=0},
+                position = vectorSum(getShadowPosition(spawnPosition), {x=0, y=0, z=-0.9}),
+                rotation = {x=0, y=180, z=0},
             })
-            denizenNumber = denizenNumber+1
             shadowCount = shadowCount+1
         end
         if dataTableContains(obj.tags, edificeTag) then
@@ -648,12 +652,13 @@ function retrieve(zone)
         end
     end
     for _, obj in ipairs(atlasSlotBag.getObjects()) do
-        if dataTableContains(obj.tags, siteTag) then
+        if dataTableContains(obj.tags, relicTag) then
             atlasSlotBag.takeObject({
                 guid = obj.guid,
-                position = spawnPosition,
-                rotation = {x=0, y=180, z=0},
+                position = getRelicPosition(spawnPosition, relicNumber, denizenNumber),
+                rotation = {x=180, y=0, z=0},
             })
+            relicNumber = relicNumber+1
         end
     end
     atlasSlotBag.setName(emptyAtlasSlotBagName)
