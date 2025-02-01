@@ -1,9 +1,9 @@
--- Atlas Box scripts written by harsch.  Last update:  01-31-2025
+-- Atlas Box scripts written by harsch.  Last update:  02-01-2025
 
 
---
--- CONFIGS
---
+-- ==============================
+-- CONFIGURATION
+-- ==============================
 
 -- GUIDs for needed items. IF SOMETHING IS BROKEN LIKELY THESE ARE NO LONGER CORRECT
 local GUIDs = {
@@ -70,7 +70,7 @@ local buttons = {
         tooltip        = "Retrieve a Site and all objects there from the Atlas Box", 
     },
     setup = {
-        click_function = "setupAtlasBox",
+        click_function = "chronicleSetup",
         function_owner = self,
         label          = "Setup Initial\nAtlas Box\nand Sites",
         position       = {0, 0, 2.6},
@@ -178,14 +178,16 @@ local pos = {
 -- Rotations
 local rot = {
     denizen =       {x = 180, y = 0,   z = 0},
-    portal =        {x = 0,   y = 0, z = 0},
+    portal =        {x = 0,   y = 180, z = 0},
     relic =         {x = 180, y = 0,   z = 0},
     relicStack =    {x = 180, y = 0,   z = 0},
     shadow =        {x = 0,   y = 180, z = 0},
-    site =          {x = 180, y = 0,   z = 0},
+    site =          {x = 0, y = 180,   z = 0},
 }
 
-local fromGUID = getObjectFromGUID
+-- ==============================
+-- INITIALIZATION
+-- ==============================
 
 function onLoad()
     -- Create all needed tags by adding them to this object and then removing them
@@ -194,22 +196,16 @@ function onLoad()
         self.addTag(tag)
         self.removeTag(tag)
     end
-    -- We don't want to overwrite the value if the tag is already there
-    if not self.hasTag(tags.chronicleCreated) then
-        self.addTag(tags.chronicleCreated)
-        self.removeTag(tags.chronicleCreated)
-    end
 
+    local chronicleExists = self.hasTag(tags.chronicleCreated)
     -- If the chronicle is already created we can skip setup
-    if self.hasTag(tags.chronicleCreated) then
-        if not checkForAtlasObjects() then return end -- Return early if atlas box is missing
+    if chronicleExists and setupAtlasBox() then
         refreshStoreButton()
-        self.createButton(buttons.retrieve)
-        self.createButton(buttons.spawnRelics)
+        createButtons(buttons.retrieve, buttons.spawnRelics)
         return
     -- If the chronicle is not created we need to spawn setup buttons
-    else
-        if checkForSetupObjects() then
+    elseif not chronicleExists then
+        if setupObjects() then
             tagAllItems() -- Tag all items in the bags
             self.createButton(buttons.setup)
         else 
@@ -218,8 +214,8 @@ function onLoad()
     end
 end
 
--- Validate that setup objects can be found 
-function checkForSetupObjects()
+-- Validate that setup objects can be found and set them
+function setupObjects()
     local setupTable = {
         {objectName = "table", GUID = GUIDs.table, printableName = "Table"},
         {objectName = "atlasBox", GUID = GUIDs.atlasBox, printableName = "Atlas Box Bag"},
@@ -230,7 +226,7 @@ function checkForSetupObjects()
     }
     local foundAll = true
     for _, setupItem in ipairs(setupTable) do
-        objects[setupItem.objectName] = fromGUID(setupItem.GUID)
+        objects[setupItem.objectName] = getObjectFromGUID(setupItem.GUID)
         if objects[setupItem.objectName] == nil then
             printToAll("ERROR: Cannot find " .. setupItem.printableName .. " by GUID")
             foundAll = false
@@ -240,8 +236,8 @@ function checkForSetupObjects()
 end
 
 -- Check that the Atlas Box can be found
-function checkForAtlasObjects()
-    objects.atlasBox = fromGUID(GUIDs.atlasBox)
+function setupAtlasBox()
+    objects.atlasBox = getObjectFromGUID(GUIDs.atlasBox)
     if objects.atlasBox == nil then
         printToAll("ERROR: Cannot find Atlas Box Bag by GUID")
         self.createButton(buttons.retry)
@@ -253,228 +249,133 @@ end
 -- Create the button for storing items in the atlas box.
 --    This button is dynamic and will change text and color for confirming storage 
 function refreshStoreButton()
-    local stagedForStorage = (#portal.sites + #portal.relics + #portal.edifices + #portal.shadow) > 0
-    removeButton(buttons.storeUnstaged)
-    removeButton(buttons.storeStaged)
-    self.createButton(stagedForStorage and buttons.storeStaged or buttons.storeUnstaged)
+    local staged = #portal.sites + #portal.relics + #portal.edifices + #portal.shadow > 0
+    removeButtons(buttons.storeUnstaged, buttons.storeStaged)
+    self.createButton(staged and buttons.storeStaged or buttons.storeUnstaged)
 end
 
 -- Remove all buttons
 function retry()
-    removeButton(buttons.retry)
+    removeButtons(buttons.retry)
     onLoad()
 end
 
---
+-- Tag all items in bags
+function tagAllItems()
+    local bagTags = { 
+        {bag = objects.relicBag,    tag = tags.relic},
+        {bag = objects.edificeBag,  tag = tags.edifice},
+        {bag = objects.shadowBag,   tag = tags.shadow}
+    }
+    for _, bagTag in ipairs(bagTags) do
+        local bag, tag = bagTag.bag, bagTag.tag
+        for _, item in ipairs(bag.getObjects()) do
+            bag.putObject(addTagAndReturn(bag.takeObject({guid = item.guid}), tag))
+        end
+    end
+end
+
+-- ==============================
 -- CHRONICLE SETUP
---
-function setupAtlasBox(obj, color, alt_click)
+-- ==============================
+
+function chronicleSetup(obj, color, alt_click)
     if not alt_click then
         -- If items are missing we need to retry setup
-        if not checkForSetupObjects() then
-            removeButton(buttons.setup)
+        if not setupObjects() then
+            removeButtons(buttons.setup)
             self.createButton(buttons.retry)
             return
         end
         -- Take all 20 sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
         for i = 1,20 do
-            local d6roll = math.random(1,6)
-            printToAll("Slot " .. i .. ", Roll " .. d6roll)
             local atlasSlotBag = getAtlasBag(20-i)
-            atlasSlotBag.putObject(getRandomSite())
-            if d6roll == 1 then
-                atlasSlotBag.putObject(getRandomEdifice())
-            elseif d6roll == 2 then
-                -- do nothing
-            elseif d6roll == 3 then
-                atlasSlotBag.putObject(getRandomRelic())
-            elseif d6roll == 4 then
-                atlasSlotBag.putObject(getRandomRelic())
-                atlasSlotBag.putObject(getRandomRelic())
-            elseif d6roll == 5 then
-                atlasSlotBag.putObject(getRandomRelic())
-                atlasSlotBag.putObject(getRandomShadow())
-            elseif d6roll == 6 then
-                atlasSlotBag.putObject(getRandomRelic())
-                atlasSlotBag.putObject(getRandomRelic())
-                atlasSlotBag.putObject(getRandomShadow())
-            end
-
-            -- Rename the slot bag and put it at the back of the Atlas Box
-            atlasSlotBag.setName(atlasSlotNames.full)
+            rollAndAddItems(atlasSlotBag, i)
             putAtlasBag(atlasSlotBag)
         end
-        dealStartingSites()
-        
-        -- Clean up the setup button, mark setup as done and spawn the new buttons
-        removeButton(buttons.setup)
+        -- Deal Starting Sites
+        for siteNumber = 1,8 do
+            local atlasSlotBag = getAtlasBag(0)
+            spawnAllFromBagAtTransform(atlasSlotBag, getTransformStruct("site", siteNumber))
+            putAtlasBag(atlasSlotBag)
+        end
+        -- Clean up contents of remaining bags
+        local bagsAndTransforms = {
+            {bag = objects.edificeBag, transform = {position = objects.edificeBag.getPosition(), rotation = {x=0,y=180,z=0}}},
+            {bag = objects.relicBag, transform = getTransformStruct("relicStack")}
+        }
+        for _, bagAndTransform in ipairs(bagsAndTransforms) do
+            for _, item in ipairs(bagAndTransform.bag.getObjects()) do
+                bagAndTransform.bag.takeObject(bagAndTransform.transform)
+            end
+        end
+
+        -- Clean up the bags and add the chronicle created tag
         self.addTag(tags.chronicleCreated)
+        removeButtons(buttons.setup)
         destroyObject(objects.siteBag)
-        for _,_ in ipairs(objects.edificeBag.getObjects()) do
-            objects.edificeBag.takeObject({rotation = {x=0,y=180,z=0}})
-        end
         destroyObject(objects.edificeBag)
-        for _,_ in ipairs(objects.relicBag.getObjects()) do
-            objects.relicBag.takeObject(getTransformStruct("relicStack"))
-        end
         destroyObject(objects.relicBag)
         printToAll("SETUP COMPLETE. Don't forget to add Edifices back to the corresponding suit decks before setting up the World Deck\n")
         refreshStoreButton()
-        self.createButton(buttons.retrieve)
-        self.createButton(buttons.spawnRelics)
+        createButtons(buttons.retrieve, buttons.spawnRelics)
     end
 end
 
-function spawnRelics()
-    local relicCount = 0    
-    for i = 1, 20 do
-        local atlasSlotBag = getAtlasBag(0)
-        if relicCount < 10 then
-            for _, item in ipairs(atlasSlotBag.getObjects()) do
-                if relicCount < 10 and dataTableContains(item.tags, tags.relic) then
-                    atlasSlotBag.takeObject({
-                        guid = item.guid,
-                        position = getTransformStruct("relicStack").position,
-                        rotation = getTransformStruct("relicStack").rotation,
-                    })
-                    relicCount = relicCount + 1
-                end
-            end
-        end
-        putAtlasBag(atlasSlotBag)
-    end
-    printToAll("Retrieved " .. relicCount .. " relics from the Atlas Box")
-end
-
-
-function dealStartingSites()
-    for siteNumber = 1,8 do
-        local atlasSlotBag = getAtlasBag(0)
-        local siteTransform = getTransformStruct("site", siteNumber)
-        -- Deal All objects from the bag
-        spawnAllFromBagAtTransform(atlasSlotBag, siteTransform)
-        -- Rename the bag to mark as empty
-        atlasSlotBag.setName(atlasSlotNames.empty)
-       putAtlasBag(atlasSlotBag)
-    end
-end
-
-function spawnAllFromBagAtTransform(bag, baseTransform) 
-    local relicNumber, denizenNumber, denizenCount = 0, 0, 0;
-    local atlasObjects = bag.getObjects()
-    for _, obj in ipairs(atlasObjects) do
-        if dataTableContains(obj.tags, tags.edifice) then
-            denizenCount = denizenCount + 1
-        end
-    end
-    for _, obj in ipairs(atlasObjects) do
-        local transform = nil
-        if dataTableContains(obj.tags, tags.site) then
-            transform = baseTransform
-        elseif dataTableContains(obj.tags, tags.shadow) then
-            transform = getTransformStruct("shadow", 0, baseTransform)
-        elseif dataTableContains(obj.tags, tags.edifice) then
-            transform = getTransformStruct("denizen", denizenNumber, baseTransform)
-            denizenNumber = denizenNumber+1
-        elseif dataTableContains(obj.tags, tags.relic) then
-            transform = getTransformStruct("relic", relicNumber, getTransformStruct("denizen", denizenCount, baseTransform))
-            relicNumber = relicNumber+1
-        end
-        if transform then
-            bag.takeObject({
-                guid = obj.guid, 
-                position = transform.position,
-                rotation = transform.rotation,
-            })
-        end
+function rollAndAddItems(atlasSlotBag, i)
+    local rollResults = {
+        [1] = {getRandomEdifice},
+        [2] = {},
+        [3] = {getRandomRelic},
+        [4] = {getRandomRelic, getRandomRelic},
+        [5] = {getRandomShadow, getRandomRelic},
+        [6] = {getRandomShadow, getRandomRelic, getRandomRelic}
+    }
+    local d6roll = math.random(1,6)
+    printToAll("Slot " .. i .. ", Roll " .. d6roll)
+    atlasSlotBag.putObject(getRandomSite())
+    for _, func in ipairs(rollResults[d6roll] or {}) do
+        atlasSlotBag.putObject(func())
     end
 end
 
 -- Get Elements for creating Chronicle
-
 function getRandomShadow()
     return getRandomObjectFromContainer(objects.shadowBag, false)
 end
-
--- tag all relics
 function getRandomRelic()
     return getRandomObjectFromContainer(objects.relicBag, false)
 end
-
 function getRandomSite()
     local site = getRandomObjectFromContainer(objects.siteBag, false)
-    site.setColorTint(Color(0,0,0))
-    -- site.setColorTint(Color(1,1,1))
-    site.setRotation({x=0,y=180,z=0})
-    site.addTag(tags.site)
+    addTagAndReturn(site, tags.site).setRotation({x=0,y=180,z=0})
     return site
 end
-
 function getRandomEdifice()
     return getRandomObjectFromContainer(objects.edificeBag, true)
 end
 
--- Tag all items in the bags
-function tagAllItems()
-    local bagTags = { 
-        {bag = objects.relicBag,    tag = tags.relic},
-        {bag = objects.edificeBag,  tag = tags.edifice},
-        {bag = objects.shadowBag,   tag = tags.shadow} }
-    for _, bagTag in ipairs(bagTags) do
-        local bag, tag = bagTag.bag, bagTag.tag
-        for _, item in ipairs(bag.getObjects()) do
-            item = bag.takeObject({guid = item.guid})
-            -- If we have a Deck we need to handle last card
-            if item.type == "Deck" then
-                local deck = item
-                local deckSize = #deck.getObjects()
-                local lastCard = nil
-                for index, containedObject in ipairs(deck.getObjects()) do
-                    if index < deckSize then
-                        containedObject = deck.takeObject({guid = containedObject.guid})
-                        containedObject.addTag(tag)
-                        lastCard = deck.remainder
-                        bag.putObject(containedObject)
-                    else
-                        lastCard.addTag(tag)
-                        bag.putObject(lastCard)
-                    end
-                end
-            else
-                item.addTag(tag)
-                bag.putObject(item)
-            end
-        end
-    end
-end
-
-
---
+-- ==============================
 -- ATLAS BOX STORAGE
--- 
+-- ==============================
 
+-- Called by button
 function storeInit()
-    if checkForAtlasObjects() then
-        createStoringZone()
+    if setupAtlasBox() then
+        createPortalZone(store)
     end
 end
 
-function createStoringZone()
-    createPortalZone(store)
-end
-
+-- Creates zone for storing objects and calls the callback
 function createPortalZone(callback)
     local cardSize = self.getVisualBoundsNormalized()["size"]
     spawnObject({
         type = "FogOfWarTrigger",
-        -- position = {0,-10,0},
         position = vectorSum(self.getPosition(), {x = 0, y = 100, z = 0}),
-        scale = {cardSize["x"], 200, cardSize["z"]},
+        scale = {cardSize.x, 200, cardSize.z},
         sound = false,
         callback_function = function(spawned_object)
-            -- spawned_object.setPosition(self.getPosition())
             spawned_object.setColorTint(hexToColor("#ff00ff"))
-            -- Wait.time(function() store(spawned_object) end, 0.10)
             Wait.time(function()
                 callback(spawned_object)
                 destroyObject(spawned_object)
@@ -484,71 +385,31 @@ function createPortalZone(callback)
     })
 end
 
+-- Store objects in the Atlas Box
 function store(zone)
+    local tagsAndPortalObjs = {
+        {tag = tags.site, data = portal.sites, printableName = "Site", },
+        {tag = tags.relic, data = portal.relics, printableName = "Relic(s)"},
+        {tag = tags.edifice, data = portal.edifices, printableName = "Edifice"},
+        {tag = tags.shadow, data = portal.shadow, printableName = "Shadow"},
+    }
+    
     -- First time we validate the objects and check with the user
-    if #portal.sites == 0 and #portal.relics == 0 and #portal.edifices == 0 and #portal.shadow == 0 then
-        for _, obj in ipairs(zone.getObjects(true)) do
-            if obj.hasTag(tags.site) then table.insert(portal.sites, obj) end
-            if obj.hasTag(tags.relic) then table.insert(portal.relics, obj) end
-            if obj.hasTag(tags.edifice) then table.insert(portal.edifices, obj) end
-            if obj.hasTag(tags.shadow) then table.insert(portal.shadow, obj) end
-        end
-        local messageParts = {}
-        if #portal.sites > 0 then table.insert(messageParts, #portal.sites .. " Site") end
-        if #portal.relics > 0 then table.insert(messageParts, #portal.relics .. " Relic(s)") end    
-        if #portal.edifices > 0 then table.insert(messageParts, #portal.edifices .. " Edifice") end
-        if #portal.shadow > 0 then table.insert(messageParts, #portal.shadow .. " Shadow") end
-        if #messageParts > 0 then
-            printToAll("Detected " .. table.concat(messageParts, ", ") .. " on the Atlas Portal.")
-            if #portal.sites < 1 then
-                printToAll("ERROR: Missing a Site. Try again after placing a Site on the Atlas Portal.\n")
-                emptyStoredPortalObjs()
-                return
-            end
-            if #portal.sites > 1 then
-                printToAll("ERROR: Too many Sites. Try again after removing Sites from the Atlas Portal until there is only one.\n")
-                emptyStoredPortalObjs()
-                return
-            end
-            if #portal.relics > 3 then
-                printToAll("ERROR: More than 3 Relics. Try again after removing some Relics from the Atlas Portal.\n")
-                emptyStoredPortalObjs()
-                return
-            end
-            if #portal.edifices > 1 then
-                printToAll("More than 1 Edifice. This is not typical but may be an exceptionalcase with current rules.")
-            end
-            if #portal.shadow > 1 then
-                printToAll("More than 1 Shadow. This is not typical but may be an exceptional case with current rules.")
-            end
-            refreshStoreButton()
-            printToAll("Click the send button again to confirm.\n")
-            return
-        else
-            printToAll("No objects on the Atlas Portal to send.\n")
-            return
-        end
+    if #portal.sites + #portal.relics + #portal.edifices + #portal.shadow == 0 then
+        countAndValidatePortalItems(zone, tagsAndPortalObjs)
+        return
+
     -- Subsequent times we actually store the objects into the atlasbox
     else
-        -- check for all objects matching
+        -- Check that all objects match last button press
         local perfectMatch = true
         local itemCount = #portal.sites + #portal.relics + #portal.edifices + #portal.shadow
         for _, obj in ipairs(zone.getObjects(true)) do
-            if obj.hasTag(tags.site) then
-                perfectMatch = dataTableContains(portal.sites, obj)
-                itemCount = itemCount - 1 
-            end
-            if obj.hasTag(tags.relic) then
-                perfectMatch = dataTableContains(portal.relics, obj)
-                itemCount = itemCount - 1 
-            end
-            if obj.hasTag(tags.edifice) then
-                perfectMatch = dataTableContains(portal.edifices, obj)
-                itemCount = itemCount - 1 
-            end
-            if obj.hasTag(tags.shadow) then
-                perfectMatch = dataTableContains(portal.shadow, obj)
-                itemCount = itemCount - 1 
+            for _, tagAndPortalObj in ipairs(tagsAndPortalObjs) do
+                if obj.hasTag(tagAndPortalObj.tag) then
+                    perfectMatch = dataTableContains(tagAndPortalObj.data, obj)
+                    itemCount = itemCount - 1
+                end
             end
             if not perfectMatch then break end
         end
@@ -558,20 +419,19 @@ function store(zone)
             return
         end
 
+        -- Store the objects in the Atlas Box in the empty slot closest to the front
         local foundEmptyBag = false
         for i = 1, 20 do
             local atlasSlotBag = getAtlasBag(0)
             if not foundEmptyBag and #atlasSlotBag.getObjects() == 0 then
                 foundEmptyBag = true
-                for _, obj in ipairs(portal.sites) do
-                    obj.setColorTint(Color(0,0,0))
-                    atlasSlotBag.putObject(obj)
+                for _, data in ipairs(tagsAndPortalObjs) do
+                    for _, obj in ipairs(data.data) do
+                        atlasSlotBag.putObject(obj)
+                    end
                 end
-                for _, obj in ipairs(portal.relics) do atlasSlotBag.putObject(obj) end
-                for _, obj in ipairs(portal.edifices) do atlasSlotBag.putObject(obj) end
-                for _, obj in ipairs(portal.shadow) do atlasSlotBag.putObject(obj) end
-                atlasSlotBag.setName(atlasSlotNames.full)
                 printToAll("Stored objects in Slot number " .. i .. "\n")
+                putAtlasBag(atlasSlotBag)
             end
             putAtlasBag(atlasSlotBag)
         end
@@ -579,29 +439,52 @@ function store(zone)
     end
 end
 
-function emptyStoredPortalObjs()
-    portal.sites = {}
-    portal.relics = {}
-    portal.edifices = {}
-    portal.shadow = {}
-    refreshStoreButton()
-end
-
---
--- ATLAS BOX RETRIEVAL
--- 
-
-function retrieveInit()
-    if checkForAtlasObjects() then
-        checkRetrievalZone()
+function countAndValidatePortalItems(zone, tagsAndPortalObjs)
+    for _, obj in ipairs(zone.getObjects(true)) do
+        for _, tagAndPortalObj in ipairs(tagsAndPortalObjs) do
+            if obj.hasTag(tagAndPortalObj.tag) then table.insert(tagAndPortalObj.data, obj) end
+        end
+    end
+    local messageParts = {}
+    for _, tagAndPortalObj in ipairs(tagsAndPortalObjs) do
+        if #tagAndPortalObj.data > 0 then
+            table.insert(messageParts, #tagAndPortalObj.data .. " " .. tagAndPortalObj.printableName)
+        end
+    end
+    if #messageParts > 0 then
+        printToAll("Detected " .. table.concat(messageParts, ", ") .. " on the Atlas Portal.")
+        if not #portal.sites == 0 or #portal.relics > 3 then 
+            if #portal.sites < 1 then printToAll("ERROR: Missing a Site. Try again after placing a Site on the Atlas Portal.\n") end
+            if #portal.sites > 1 then printToAll("ERROR: Too many Sites. Try again after removing Sites from the Atlas Portal until there is only one.\n") end
+            if #portal.relics > 3 then printToAll("ERROR: More than 3 Relics. Try again after removing some Relics from the Atlas Portal.\n") end
+            emptyStoredPortalObjs()
+            return
+        end
+        if #portal.shadow > 1 then printToAll("More than 1 Shadow. This is not typical but may be an exceptional case with current rules.") end
+        refreshStoreButton()
+        printToAll("Click the send button again to confirm.\n")
+    else
+        printToAll("No objects on the Atlas Portal to send.\n")
     end
 end
 
-function checkRetrievalZone()
-    createPortalZone(retrieve)
+function emptyStoredPortalObjs()
+    portal.sites, portal.relics, portal.edifices, portal.shadow = {}, {}, {}, {} 
+    refreshStoreButton()
+end
+
+-- ==============================
+-- ATLAS BOX RETRIEVAL
+-- ==============================
+
+function retrieveInit()
+    if setupAtlasBox() then
+        createPortalZone(retrieve)
+    end
 end
 
 function retrieve(zone)
+    -- Validate that the portal is empty
     if #portal.sites + #portal.edifices + #portal.relics + #portal.shadow > 0 then
         printToAll("ERROR: Cannot Summon while storing sites\n")
         return
@@ -612,8 +495,8 @@ function retrieve(zone)
             return
         end
     end
-    self.setLock(true)
 
+    -- Roll a d6 and spawn the corresponding slot
     local d6roll = math.random(1,6)
     local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
     local countsAndTags = {
@@ -629,21 +512,50 @@ function retrieve(zone)
             end
         end
     end
+    self.setLock(true)
     spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform)
-    atlasSlotBag.setName(atlasSlotNames.empty)
     putAtlasBag(atlasSlotBag)
+    
+    -- Print message with what was summoned
     local messageParts = {}
     for _, countAndTag in ipairs(countsAndTags) do
         if countAndTag.data.count > 0 then
             table.insert(messageParts, countAndTag.data.count .. " " .. countAndTag.data.printName)
         end
     end
-    if #messageParts > 0 then
-        printToAll("Summoning Site from Slot " .. d6roll .. " with " .. table.concat(messageParts, ", ") .. "\n")
-    else
-        printToAll("Summoning Empty Site from Slot " .. d6roll .. "\n")
-    end
+    printToAll(#messageParts > 0 and ("Summoning Site from Slot " .. d6roll .. " with " .. table.concat(messageParts, ", ") .. "\n") or ("Summoning Empty Site from Slot " .. d6roll .. "\n"))
 end
+
+--- ==============================
+--- ATLAS BOX RELIC RETRIEVAL
+--- ==============================
+
+-- Try to get 10 relics from the Atlas Box 
+function spawnRelics()
+    local relicCount = 0    
+    for i = 1, 20 do
+        local atlasSlotBag = getAtlasBag(0)
+        if relicCount < 10 then
+            for _, item in ipairs(atlasSlotBag.getObjects()) do
+                if relicCount < 10 and dataTableContains(item.tags, tags.relic) then
+                    local transform = getTransformStruct("relicStack")
+                    atlasSlotBag.takeObject({
+                        guid = item.guid,
+                        position = transform.position,
+                        rotation = transform.rotation,
+                    })
+                    relicCount = relicCount + 1
+                end
+            end
+        end
+        putAtlasBag(atlasSlotBag)
+    end
+    printToAll("Retrieved " .. relicCount .. " relics from the Atlas Box")
+end
+
+-- ==============================
+-- UTILITY
+-- ==============================
 
 -- Override Site Flip wtih recolor
 function onPlayerAction(player, action, targets)
@@ -671,13 +583,17 @@ end
 function putAtlasBag(bag)
     local wasUnlocked = objects.atlasBox.hasTag(tags.unlocked)
     objects.atlasBox.addTag(tags.unlocked)
+    if #bag.getObjects() > 0 then
+        bag.setName(atlasSlotNames.full)
+    else
+        bag.setName(atlasSlotNames.empty)
+    end
     objects.atlasBox.putObject(bag)
     if not wasUnlocked then objects.atlasBox.removeTag(tags.unlocked) end
-    return
 end
 
 -- Get transform for a given tag and index
-    -- Can provide a base tag and index to use a base position
+    -- Can provide a base position
 function getTransformStruct(tag, index, baseTransform)
     return {
         position = vectorSum(
@@ -688,19 +604,57 @@ function getTransformStruct(tag, index, baseTransform)
     }
 end
 
--- General Util
+-- Spawn all objects from a bag at a given position and rotation
+function spawnAllFromBagAtTransform(bag, baseTransform) 
+    local relicNumber, denizenNumber, denizenCount = 0, 0, 0;
+    local atlasObjects = bag.getObjects()
+    for _, obj in ipairs(atlasObjects) do
+        if dataTableContains(obj.tags, tags.edifice) then
+            denizenCount = denizenCount + 1
+        end
+    end
+    for _, obj in ipairs(atlasObjects) do
+        local transform = nil
+        if dataTableContains(obj.tags, tags.site) then
+            transform = baseTransform
+        elseif dataTableContains(obj.tags, tags.shadow) then
+            transform = getTransformStruct("shadow", 0, baseTransform)
+        elseif dataTableContains(obj.tags, tags.edifice) then
+            transform = getTransformStruct("denizen", denizenNumber, baseTransform)
+            denizenNumber = denizenNumber+1
+        elseif dataTableContains(obj.tags, tags.relic) then
+            transform = getTransformStruct("relic", relicNumber, getTransformStruct("denizen", denizenCount, baseTransform))
+            relicNumber = relicNumber+1
+        end
+        if transform then
+            local bagObj = bag.takeObject({
+                guid = obj.guid, 
+                position = transform.position,
+                rotation = transform.rotation,
+            })
+            if dataTableContains(obj.tags, tags.site) then bagObj.setColorTint(Color(0,0,0)) end
+        end
+    end
+end
+
+-- ==============================
+-- GENERAL ULILTIY
+-- ==============================
 
 function dataTableContains(table, x)
-    local found = false
     for _, obj in ipairs(table) do
-        if obj == x then found = true end
+        if obj == x then return true end
     end
-    return found
+    return false
 end
 
 function getRandomObjectFromContainer(container, flipped)
+    local objects = container.getObjects()
+    if #objects == 0 then return nil end  -- Prevent errors when bag is empty
+    local selected = objects[math.random(1, #objects)]
+
     return container.takeObject({
-        guid = container.getObjects()[math.random(1, #container.getObjects())].guid,
+        guid = selected.guid,
         position = vectorSum(container.getPosition(), {x = 0, y = 5, z = 0}),
         rotation = flipped and vectorSum({x = 180, y = 180, z = 0},container.getRotation()) or container.getRotation(),
     })
@@ -714,15 +668,30 @@ function vectorSum(v1, v2)
     }
 end
 
-function removeButton(input)
-    local buttonIndex = nil
-    if self.getButtons() then
-        for i, button in ipairs(self.getButtons()) do
-            if button and button.label == input.label then
-                buttonIndex = button.index
-                break
+function removeButtons(...)
+    local buttonsToRemove = {...}
+    for _, buttonToRemove in ipairs(buttonsToRemove) do
+        local buttonIndex = nil
+        if self.getButtons() then
+            for i, button in ipairs(self.getButtons()) do
+                if button and button.label == buttonToRemove.label then
+                    buttonIndex = button.index
+                    break
+                end
             end
+            if buttonIndex then self.removeButton(buttonIndex) end
         end
-        if buttonIndex then self.removeButton(buttonIndex) end
     end
+end
+
+function createButtons(...)
+    local buttonsToCreate = {...}
+    for _, buttonToCreate in ipairs(buttonsToCreate) do
+        self.createButton(buttonToCreate)
+    end
+end
+
+function addTagAndReturn(item, tag)
+    item.addTag(tag)
+    return item
 end
