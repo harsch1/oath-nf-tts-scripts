@@ -432,6 +432,7 @@ function store(zone)
                 end
                 printToAll("Stored objects in Slot number " .. i .. "\n")
                 putAtlasBag(atlasSlotBag)
+                break
             end
             putAtlasBag(atlasSlotBag)
         end
