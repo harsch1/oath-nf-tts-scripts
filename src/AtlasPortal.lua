@@ -287,9 +287,10 @@ function chronicleSetup(obj, color, alt_click)
             self.createButton(buttons.retry)
             return
         end
-        -- Take all 20 sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
-        for i = 1,20 do
-            local atlasSlotBag = getAtlasBag(20-i)
+        -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
+        local numSites = #objects.siteBag.getObjects()
+        for i = 1, numSites do
+            local atlasSlotBag = getAtlasBag(numSites-i)
             rollAndAddItems(atlasSlotBag, i)
             putAtlasBag(atlasSlotBag)
         end
@@ -421,7 +422,7 @@ function store(zone)
 
         -- Store the objects in the Atlas Box in the empty slot closest to the front
         local foundEmptyBag = false
-        for i = 1, 20 do
+        for i = 1, #objects.atlasBox.getObjects() do
             local atlasSlotBag = getAtlasBag(0)
             if not foundEmptyBag and #atlasSlotBag.getObjects() == 0 then
                 foundEmptyBag = true
@@ -431,8 +432,6 @@ function store(zone)
                     end
                 end
                 printToAll("Stored objects in Slot number " .. i .. "\n")
-                putAtlasBag(atlasSlotBag)
-                break
             end
             putAtlasBag(atlasSlotBag)
         end
@@ -497,15 +496,14 @@ function retrieve(zone)
         end
     end
 
-    -- Roll a d6 and spawn the corresponding slot
-    local d6roll = math.random(1,6)
+    -- Spawn the frontmost bags contents
     local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
     local countsAndTags = {
         {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
         {tag = tags.edifice, data = {count = 0, printName = "Edifice"}},
         {tag = tags.shadow, data = {count = 0, printName = "Shadow"}},
     }
-    local atlasSlotBag = getAtlasBag(d6roll-1)
+    local atlasSlotBag = getAtlasBag(0)
     for _, obj in ipairs(atlasSlotBag.getObjects()) do
         for _, countAndTag in ipairs(countsAndTags) do
             if dataTableContains(obj.tags, countAndTag.tag) then
@@ -524,7 +522,7 @@ function retrieve(zone)
             table.insert(messageParts, countAndTag.data.count .. " " .. countAndTag.data.printName)
         end
     end
-    printToAll(#messageParts > 0 and ("Summoning Site from Slot " .. d6roll .. " with " .. table.concat(messageParts, ", ") .. "\n") or ("Summoning Empty Site from Slot " .. d6roll .. "\n"))
+    printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ") .. "\n") or ("Summoning Empty Site\n"))
 end
 
 --- ==============================
@@ -534,7 +532,7 @@ end
 -- Try to get 10 relics from the Atlas Box 
 function spawnRelics()
     local relicCount = 0    
-    for i = 1, 20 do
+    for i = 1, #objects.atlasBox.getObjects() do
         local atlasSlotBag = getAtlasBag(0)
         if relicCount < 10 then
             for _, item in ipairs(atlasSlotBag.getObjects()) do
