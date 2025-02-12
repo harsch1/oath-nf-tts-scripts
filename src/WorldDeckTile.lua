@@ -89,7 +89,22 @@ function CreateDeckSetupButtons()
       font_size      = 150,
       color          = Color.fromHex('#E0E2E1E7'),
       font_color     = Color.fromHex('#398c93'),
-      tooltip        = 'Click to automatically shuffle "A Fair Deck"',
+      tooltip        = 'Click to automatically set up deck',
+  }
+  deckSetupFoundation.createButton(params)
+
+  params = {
+      click_function = "OnShuffleUnfairWorldDeck",
+      function_owner = self,
+      label          = "Automate",
+      position       = {0, -0.5, 1.4},
+      rotation       = {0, 0, 180},
+      width          = 800,
+      height         = 200,
+      font_size      = 150,
+      color          = Color.fromHex('#f1e8dfe7'),
+      font_color     = Color.fromHex('#be5639'),
+      tooltip        = 'Click to automatically set up deck',
   }
   deckSetupFoundation.createButton(params)
 end
@@ -161,7 +176,7 @@ function FindAllVisions()
         local info = deckData.ContainedObjects[i]
         local deckID = math.floor(info.CardID / 100)
         if deckData.CustomDeck[deckID].BackURL == VisionBackURL then
-          table.insert(result, object.takeObject({i-1, smooth=false}))
+          table.insert(result, object.takeObject({index=i-1, smooth=false}))
         end
       end
     end
@@ -205,9 +220,50 @@ function OnShuffleFairWorldDeck(_, player_color, _)
     worldDeck = insertCardInDeck(worldDeck, visions[i], index)
   end
 
-  -- three visions go between slots 13 and 28
+  -- three visions go between slots 13 and 30
   for i = 3, 5 do
-    local index = math.random(13, 25+i)
+    local index = math.random(13, 27+i)
+    visions[i].tooltip = false
+    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
+  end
+end
+
+
+-- this will perform world deck setup on the 'A Fair Deck' foundation
+function OnShuffleUnfairWorldDeck(_, player_color, _)
+
+  -- find and shuffle visions
+  local visions = ShuffleTable(FindAllVisions())
+  if #visions ~= 5 then
+    broadcastToAll("Error: Could not find all 5 visions!")
+    return
+  end
+  
+  -- find and shuffle world deck
+  local worldDeck = FindWorldDeck()
+  if worldDeck == nil then
+    broadcastToColor("World deck not found! Is this a new chronical? click the world deck slot to generate one.", player_color, {r=0.8, g=0, b=0})
+    return
+  end
+  worldDeck.shuffle()
+
+  -- take one vision out and give it to a random player
+  local selectedVision = table.remove(visions, #visions)
+  local selectedPlayer = Player.getPlayers()[math.random(#Player.getPlayers())]
+  selectedVision.deal(1, selectedPlayer.color)
+
+  -- insert visions at random positions according to rules
+
+  -- two visions go in the first 16 slots
+  for i = 1, 2 do
+    local index = math.random(1, 14+i)
+    visions[i].tooltip = false
+    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
+  end
+
+  -- two visions go between slots 17 and 32
+  for i = 3, 4 do
+    local index = math.random(13, 30+i)
     visions[i].tooltip = false
     worldDeck = insertCardInDeck(worldDeck, visions[i], index)
   end
@@ -216,6 +272,7 @@ end
 
 function OnRandomizeNewDeck(_, player_color, _)
 
+  -- edifices bag is deleted by the atlas setup. if it still exists, the deck can't be made yet.
   if (getObjectFromGUID(guids.EdificesBag) ~= nil) then
     broadcastToColor("Set up the atlas box and organize the Edifices first!", player_color, {r=0.8, g=0, b=0})
     return
