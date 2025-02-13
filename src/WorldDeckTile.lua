@@ -143,14 +143,29 @@ function GetArchiveCardDecks_Coroutine(player_color)
   return result
 end
 
-function insertCardInDeck(deck, card, index)
+function InsertCardInDeck(deck, card, index)
   local rotation = deck.getRotation()
   local result = nil
-  if index > 1 then
-    local decks = deck.cut(deck.getQuantity()-(index-1))
-    result = group({decks[2], card, decks[1]})[1]
-  else
+  local deckQuantity = deck.getQuantity()
+
+  if index == 1 then
+    -- insert at beginning
+    result = group({card, deck})[1]
+  elseif index == 2 then
+    -- insert at second card
+    local frontCard = deck.takeObject({top=true})
+    result = group({frontCard, card, deck})[1]
+  elseif index == deckQuantity then
+    -- insert at second to last card
+    local backCard = deck.takeObject({top=false})
+    result = group({deck, card, backCard})[1]
+  elseif index == deckQuantity + 1 then
+    -- insert at end
     result = group({deck, card})[1]
+  else
+    -- insert somewhere in the middle
+    local decks = deck.cut(deckQuantity-(index-1))
+    result = group({decks[2], card, decks[1]})[1]
   end
 
   -- cutting and grouping can cause the deck to be rotated. This fixes that.
@@ -213,19 +228,29 @@ function OnShuffleFairWorldDeck(_, player_color, _)
 
   -- insert visions at random positions according to rules
 
-  -- two visions go in the first 12 slots
-  for i = 1, 2 do
-    local index = math.random(1, 10+i)
-    visions[i].tooltip = false
-    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
+  if worldDeck.getQuantity() >= 25 then
+    -- two visions go in the first 12 slots
+    for i = 1, 2 do
+      local index = math.random(1, 10+i)
+      visions[i].tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, visions[i], index)
+    end
+
+    -- three visions go between slots 13 and 30
+    for i = 3, 5 do
+      local index = math.random(13, 27+i)
+      visions[i].tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, visions[i], index)
+    end
+  else
+    -- there aren't enough denizens to split the deck. just shuffle it all instead.
+    for _, vision in ipairs(visions) do
+      local index = math.random(1, worldDeck.getQuantity() + 1)
+      vision.tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, vision, index)
+    end
   end
 
-  -- three visions go between slots 13 and 30
-  for i = 3, 5 do
-    local index = math.random(13, 27+i)
-    visions[i].tooltip = false
-    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
-  end
 end
 
 
@@ -254,18 +279,27 @@ function OnShuffleUnfairWorldDeck(_, player_color, _)
 
   -- insert visions at random positions according to rules
 
-  -- two visions go in the first 16 slots
-  for i = 1, 2 do
-    local index = math.random(1, 14+i)
-    visions[i].tooltip = false
-    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
-  end
+  if worldDeck.getQuantity() >= 25 then
+    -- two visions go in the first 16 slots
+    for i = 1, 2 do
+      local index = math.random(1, 14+i)
+      visions[i].tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, visions[i], index)
+    end
 
-  -- two visions go between slots 17 and 32
-  for i = 3, 4 do
-    local index = math.random(13, 30+i)
-    visions[i].tooltip = false
-    worldDeck = insertCardInDeck(worldDeck, visions[i], index)
+    -- two visions go between slots 17 and 32
+    for i = 3, 4 do
+      local index = math.random(13, 30+i)
+      visions[i].tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, visions[i], index)
+    end
+  else
+    -- there aren't enough denizens to split the deck. just shuffle it all instead.
+    for _, vision in ipairs(visions) do
+      local index = math.random(1, worldDeck.getQuantity() + 1)
+      vision.tooltip = false
+      worldDeck = InsertCardInDeck(worldDeck, vision, index)
+    end
   end
 end
 
