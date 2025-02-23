@@ -1,9 +1,10 @@
 function onLoad()
-
+  self.setScale(Vector(0.000001,0.000001,0.000001))
+  self.interactable = false
 end
 
 function onPlayerConnect(player)
-  -- player in gamemaster seat so they'll be randomized
+  -- put player in gamemaster seat so they'll be randomized
   player.changeColor('Black')
 end
 

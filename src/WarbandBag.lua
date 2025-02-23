@@ -1,3 +1,4 @@
+require('src/Utils/ColorUtils')
 
 local bagColorLookup = {
   [Color.fromHex('F84713')] = 'Red',
@@ -55,9 +56,9 @@ local desiredWarbandCountLookup = {
 }
 
 function GetWarbandSpawnData()
-  local warbandColor = getBestFitColor()
-  local Texture = warbandAssetLookup[warbandColor]
-  local SpecularIntensity = warbandSpecularIntensityLookup[warbandColor]
+  local oathColor = GetBestFitOathColor(self.getColorTint())
+  local Texture = warbandAssetLookup[oathColor]
+  local SpecularIntensity = warbandSpecularIntensityLookup[oathColor]
 
   return {
     Name = "Custom_Model",
@@ -111,23 +112,9 @@ function GetWarbandSpawnData()
   }
 end
 
-function getBestFitColor()
-  local shortestDistance = 1000000000
-  local foundColor = nil
-  local selfColorVector = Vector(self.getColorTint().r, self.getColorTint().g, self.getColorTint().b)
-  for color, colorName in pairs(bagColorLookup) do
-    local distance = selfColorVector:distance(Vector(color.r, color.g, color.b))
-    if distance < shortestDistance then
-      shortestDistance = distance
-      foundColor = colorName
-    end
-  end
-  return foundColor
-end
-
 function CountWarbandsOnTable()
   local result = 0
-  local warbandTexture = warbandAssetLookup[getBestFitColor()]
+  local warbandTexture = warbandAssetLookup[GetBestFitOathColor(self.getColorTint())]
   for _, object in ipairs(getObjectsWithTag("Warband")) do
     local data = object.getData()
     if data.CustomMesh and data.CustomMesh.DiffuseURL == warbandTexture then
@@ -138,9 +125,9 @@ function CountWarbandsOnTable()
 end
 
 function BagNeedsRebuild(ContainedObjects, warbandCountOnTable)
-  local warbandColor = getBestFitColor()
-  local warbandTexture = warbandAssetLookup[warbandColor]
-  local desiredWarbandCount = desiredWarbandCountLookup[warbandColor]
+  local oathColor = GetBestFitOathColor(self.getColorTint())
+  local warbandTexture = warbandAssetLookup[oathColor]
+  local desiredWarbandCount = desiredWarbandCountLookup[oathColor]
   if self.getQuantity() + warbandCountOnTable ~= desiredWarbandCount then
     return true
   end
@@ -161,8 +148,8 @@ end
 function UpdateWarbandCountAndColor()
   local data = self.getData()
   local warbandCountOnTable = CountWarbandsOnTable()
-  local warbandColor = getBestFitColor()
-  local desiredWarbandCount = desiredWarbandCountLookup[warbandColor]
+  local oathColor = GetBestFitOathColor(self.getColorTint())
+  local desiredWarbandCount = desiredWarbandCountLookup[oathColor]
   
   if BagNeedsRebuild(data.ContainedObjects, warbandCountOnTable) then
     local containedObjects = {}

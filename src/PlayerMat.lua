@@ -1,4 +1,4 @@
-
+require('src/Utils/ColorUtils')
 
 local playerArchive = "130c82"
 
@@ -127,7 +127,15 @@ end
 
 function OnArchive(_, player_color, _)
   local hits = CastForObjects()
-  if #hits == 0 then
+
+  local toAttach = {}
+  for _, info in ipairs(hits) do
+    if not info.hit_object.hasTag('archivedPlayer') and not info.hit_object.hasTag('DoNotArchive') then
+      table.insert(toAttach, info.hit_object)
+    end
+  end
+
+  if #toAttach == 0 then
     return
   end
 
@@ -135,10 +143,8 @@ function OnArchive(_, player_color, _)
   local handle = FindOrCreateHandle(hits)
   
   -- attach all the objects so they can be stored in a state
-  for _, info in ipairs(hits) do
-    if info.hit_object ~= handle then
-      handle.addAttachment(info.hit_object)
-    end
+  for _, object in ipairs(toAttach) do
+    handle.addAttachment(object)
   end
 
   handle = handle.reload()
@@ -295,12 +301,12 @@ function OnSaveSteamName(_, player_color, right_click)
     memo = JSON.decode(handle.memo)
   end
 
-  if right_click then
+  if right_click or memo.steam_id == Player[player_color].steam_id then
     memo.steam_id = nil
     memo.steam_name = nil
   else
     memo.steam_id = Player[player_color].steam_id
-    memo.steam_name= Player[player_color].steam_name
+    memo.steam_name = Player[player_color].steam_name
   end
   handle.memo = JSON.encode(memo)
   handle.setName(memo.steam_name)
@@ -339,24 +345,6 @@ function GetWarbandBag()
   return nil
 end
 
-function GetClosestPlayerColor(colorToMatch)
-  local shortestDistance = 1000000000
-  local foundColor = nil
-  local colorVector = vector(colorToMatch.r, colorToMatch.g, colorToMatch.b)
-  for _, colorName in ipairs(Player.getColors()) do
-    -- Grey and Black are reserved colors for spectator and gamemaker
-    if colorName ~= 'Grey' and colorName ~= 'Black' then
-      local color = Color.fromString(colorName)
-      local distance = colorVector:distance(Vector(color.r, color.g, color.b))
-      if distance < shortestDistance then
-        shortestDistance = distance
-        foundColor = colorName
-      end
-    end
-  end
-  return foundColor
-end
-
 function UpdatePlayerColor()
   local hands = {}
   local unusedColors = {
@@ -383,7 +371,7 @@ function UpdatePlayerColor()
   local warbandBag = GetWarbandBag()
   local player = GetNearestPlayer()
   if warbandBag and player then
-    local playerColor = GetClosestPlayerColor(warbandBag.getColorTint())
+    local playerColor = GetBestFitTTSColor(warbandBag.getColorTint())
     if playerColor ~= player.color then
       if hands[player.color] ~= nil then
         if hands[playerColor] ~= nil then
