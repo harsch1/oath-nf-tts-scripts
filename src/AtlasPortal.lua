@@ -13,6 +13,7 @@ local GUIDs = {
     shadowBag = "1ce44a",
     siteBag = "12dafe",
     table = "4ee1f2",
+    map = "d5dacf",
 }
 
 -- Objects for needed game objects.
@@ -23,6 +24,7 @@ local objects = {
     shadowBag = nil,
     siteBag = nil,
     table = nil,
+    map = nil
 }
 
 -- Function to convert hex color to Color object (added early to not break buttons store)
@@ -153,26 +155,32 @@ local portal = {
     sites = {},
 }
 
+-- {33.30, 1.45, 1.00}
+-- {33.30, 1.50, 0.00}
+
 -- Positions
 local pos = {
+    -- relative to site
     denizen =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
-    portal =        function(i) return {x = 0, y = 5, z = 0} end,
     relic =         function(i) return {x = -0.15, y = 0.25*i, z = -1.3+1.3*i} end,
-    relicStack =    function(i) return {x = 13.6, y = 2,  z = -8.9} end,
-    shadow =        function(i) return {x = -2.275, y = 10, z = 0.570} end,
+    shadow =        function(i) return {x = -2.275, y = 1, z = 0.570} end,
+    -- relative to atlas portal
+    portal =        function(i) return {x = 0, y = 5, z = 0} end,
+    -- relative to map
+    relicStack =    function(i) return {x = -19.7, y = 0.55,  z = -9.9} end,
     site =          function(i)
                         local sitePositions = {
-                            { x = 6.75,     y = 2, z =  6.00 },
-                            { x = 6.75,     y = 2, z =  0.25 },
-                            { x = 27.20,    y = 2, z =  6.00 },
-                            { x = 27.20,    y = 2, z =  0.25 },
-                            { x = 27.20,    y = 2, z = -5.50 },
-                            { x = 48.15,   y = 2, z =  6.00 },
-                            { x = 48.15,   y = 2, z =  0.25 },
-                            { x = 48.15,   y = 2, z = -5.50 }
+                            { x = -26.55, y = 0.21, z =  5.00 },
+                            { x = -26.55, y = 0.21, z = -0.75 },
+                            { x = -06.10, y = 0.21, z =  5.00 },
+                            { x = -06.10, y = 0.21, z = -0.75 },
+                            { x = -06.10, y = 0.21, z = -6.50 },
+                            { x =  14.85, y = 0.21, z =  5.00 },
+                            { x =  14.85, y = 0.21, z = -0.75 },
+                            { x =  14.85, y = 0.21, z = -6.50 }
                         }
                         return sitePositions[i]
-                    end,                   
+                    end,
 }
 
 -- Rotations
@@ -222,7 +230,8 @@ function setupObjects()
         {objectName = "edificeBag", GUID = GUIDs.edifices, printableName = "Edifices Bag"},
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
         {objectName = "shadowBag", GUID = GUIDs.shadowBag, printableName = "Shadow Denizens Bag"},
-        {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"}
+        {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"},
+        {objectName = "map", GUID = GUIDs.map, printableName = "Map"}
     }
     local foundAll = true
     for _, setupItem in ipairs(setupTable) do
@@ -287,6 +296,7 @@ function chronicleSetup(obj, color, alt_click)
             self.createButton(buttons.retry)
             return
         end
+        local mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
         -- Take all 20 sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
         for i = 1,20 do
             local atlasSlotBag = getAtlasBag(20-i)
@@ -296,13 +306,13 @@ function chronicleSetup(obj, color, alt_click)
         -- Deal Starting Sites
         for siteNumber = 1,8 do
             local atlasSlotBag = getAtlasBag(0)
-            spawnAllFromBagAtTransform(atlasSlotBag, getTransformStruct("site", siteNumber))
+            spawnAllFromBagAtTransform(atlasSlotBag, getTransformStruct("site", siteNumber, mapTransform))
             putAtlasBag(atlasSlotBag)
         end
         -- Clean up contents of remaining bags
         local bagsAndTransforms = {
             {bag = objects.edificeBag, transform = {position = objects.edificeBag.getPosition(), rotation = {x=0,y=180,z=0}}},
-            {bag = objects.relicBag, transform = getTransformStruct("relicStack")}
+            {bag = objects.relicBag, transform = getTransformStruct("relicStack", 0, mapTransform)}
         }
         for _, bagAndTransform in ipairs(bagsAndTransforms) do
             for _, item in ipairs(bagAndTransform.bag.getObjects()) do
@@ -536,10 +546,11 @@ function spawnRelics()
     local relicCount = 0    
     for i = 1, 20 do
         local atlasSlotBag = getAtlasBag(0)
+        local mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
         if relicCount < 10 then
             for _, item in ipairs(atlasSlotBag.getObjects()) do
                 if relicCount < 10 and dataTableContains(item.tags, tags.relic) then
-                    local transform = getTransformStruct("relicStack")
+                    local transform = getTransformStruct("relicStack", 0, mapTransform)
                     atlasSlotBag.takeObject({
                         guid = item.guid,
                         position = transform.position,
@@ -633,6 +644,18 @@ function spawnAllFromBagAtTransform(bag, baseTransform)
                 position = transform.position,
                 rotation = transform.rotation,
             })
+            -- it takes the sites a moment to load so lock objects for a moment so colliders work properly
+            Wait.condition(
+                function()
+                    bagObj.setLock(true)
+                    Wait.time(function()
+                        bagObj.setLock(false)
+                    end, 3)
+                end,
+                function()
+                    return not bagObj.isSmoothMoving()
+                end
+            )
             if dataTableContains(obj.tags, tags.site) then bagObj.setColorTint(Color(0,0,0)) end
         end
     end

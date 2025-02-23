@@ -84,7 +84,11 @@ end
 function NextHotkeyValue()
   local max = 0
   for _, handle in ipairs(getObjectsWithTag('archivedPlayer')) do
-    local memoTable = JSON.decode(handle.memo)
+    local memoTable = {}
+    
+    if handle.memo ~= nil and handle.memo ~= "" then
+      memoTable = JSON.decode(handle.memo)
+    end
     local usedHotkey = memoTable.hotkey
     if usedHotkey ~= nil then
       max = math.max(max, usedHotkey)
@@ -92,7 +96,10 @@ function NextHotkeyValue()
   end
 
   for _, data in ipairs(playerArchive.getObjects()) do
-    local memoTable = JSON.decode(handle.memo)
+    local memoTable = {}
+    if data.memo ~= nil and data.memo ~= "" then
+      memoTable = JSON.decode(data.memo)
+    end
     local usedHotkey = memoTable.hotkey
     if usedHotkey ~= nil then
       max = math.max(max, usedHotkey)
@@ -197,7 +204,10 @@ end
 
 function getHandleGuidForHotkey(hotKey)
   for _, data in ipairs(playerArchive.getObjects()) do
-    local memoTable = JSON.decode(data.memo)
+    local memoTable = {}
+    if data.memo ~= nil and data.memo ~= "" then
+      memoTable = JSON.decode(data.memo)
+    end
     if memoTable.hotkey == hotKey then
       return data.guid
     end
@@ -207,7 +217,10 @@ end
 
 function getHandleGuidForSteamId(steam_id)
   for _, data in ipairs(playerArchive.getObjects()) do
-    local memoTable = JSON.decode(data.memo)
+    local memoTable = {}
+    if data.memo ~= nil and data.memo ~= "" then
+      memoTable = JSON.decode(data.memo)
+    end
     if memoTable.steam_id == steam_id then
       return data.guid
     end
@@ -270,7 +283,7 @@ function UpdateNametag(handle)
   end
   
   local memo = {}
-  if handle and handle.memo ~= nil and handle.memo ~= "" then
+  if handle ~= nil and handle.memo ~= nil and handle.memo ~= "" then
     memo = JSON.decode(handle.memo)
   end
 
@@ -297,7 +310,7 @@ function OnSaveSteamName(_, player_color, right_click)
   -- attach found objects to a cube for easy handling
   local handle = FindOrCreateHandle(hits)
   local memo = {}
-  if handle.memo ~= nil and handle.memo ~= "" then
+  if handle ~= nil and handle.memo ~= nil and handle.memo ~= "" then
     memo = JSON.decode(handle.memo)
   end
 
