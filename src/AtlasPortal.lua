@@ -69,7 +69,21 @@ local buttons = {
         font_size      = 77,
         color          = hexToColor("#588087"),
         font_color     = {1, 1, 1, 1},
-        tooltip        = "Retrieve a Site and all objects there from the Atlas Box", 
+        tooltip        = "Retrieve a Site and all objects there from the front of the Atlas Box", 
+    },
+    retrieveBack = {
+        click_function = "retrieveBackInit",
+        function_owner = self,
+        label          = "→ (from the back) →",
+        position       = {-1.85, 0, 2.},
+        scale          = {1.0,   1.0,   2.0 },
+        rotation       = {0, 0, 0},
+        width          = 725,
+        height         = 100,
+        font_size      = 50,
+        color          = hexToColor("#588087"),
+        font_color     = {1, 1, 1, 1},
+        tooltip        = "Retrieve a Site and all objects there from the back of the Atlas Box", 
     },
     setup = {
         click_function = "chronicleSetup",
@@ -209,7 +223,7 @@ function onLoad()
     -- If the chronicle is already created we can skip setup
     if chronicleExists and setupAtlasBox() then
         refreshStoreButton()
-        createButtons(buttons.retrieve, buttons.spawnRelics)
+        createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack)
         return
     -- If the chronicle is not created we need to spawn setup buttons
     elseif not chronicleExists then
@@ -329,7 +343,7 @@ function chronicleSetup(obj, color, alt_click)
         destroyObject(objects.relicBag)
         printToAll("SETUP COMPLETE. Don't forget to add Edifices back to the corresponding suit decks before setting up the World Deck\n")
         refreshStoreButton()
-        createButtons(buttons.retrieve, buttons.spawnRelics)
+        createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack)
     end
 end
 
@@ -494,26 +508,72 @@ function retrieveInit()
 end
 
 function retrieve(zone)
-    -- Validate that the portal is empty
-    if #portal.sites + #portal.edifices + #portal.relics + #portal.shadow > 0 then
-        printToAll("ERROR: Cannot Summon while storing sites\n")
+    if not isPortalEmpty(zone) then
         return
     end
-    for _, obj in ipairs(zone.getObjects(true)) do
-        if obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice) or obj.hasTag(tags.shadow) then
-            printToAll("ERROR: Cannot Summon while pieces are on the Portal\n")
-            return
-        end
-    end
 
-    -- Spawn the frontmost bags contents
+    -- Set up variables for spawning
     local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
     local countsAndTags = {
         {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
         {tag = tags.edifice, data = {count = 0, printName = "Edifice"}},
         {tag = tags.shadow, data = {count = 0, printName = "Shadow"}},
     }
+
+    -- Spawn the frontmost bags contents
     local atlasSlotBag = getAtlasBag(0)
+    for _, obj in ipairs(atlasSlotBag.getObjects()) do
+        for _, countAndTag in ipairs(countsAndTags) do
+            if dataTableContains(obj.tags, countAndTag.tag) then
+                countAndTag.data.count = countAndTag.data.count + 1
+            end
+        end
+    end
+    self.setLock(true)
+    spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform)
+    putAtlasBag(atlasSlotBag)
+    
+    -- Print message with what was summoned
+    local messageParts = {}
+    for _, countAndTag in ipairs(countsAndTags) do
+        if countAndTag.data.count > 0 then
+            table.insert(messageParts, countAndTag.data.count .. " " .. countAndTag.data.printName)
+        end
+    end
+    printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ") .. "\n") or ("Summoning Empty Site\n"))
+end
+
+function retrieveBackInit()
+    if setupAtlasBox() then
+        createPortalZone(retrieveBack)
+    end
+end
+
+function retrieveBack(zone)
+    if not isPortalEmpty(zone) then
+        return
+    end
+
+    -- Set up variables for spawning
+    local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
+    local countsAndTags = {
+        {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
+        {tag = tags.edifice, data = {count = 0, printName = "Edifice"}},
+        {tag = tags.shadow, data = {count = 0, printName = "Shadow"}},
+    }
+
+    -- Get the backmost full bag
+    local lastFullBagIndex = 0
+    for i = 0, #objects.atlasBox.getObjects()-1 do
+        local atlasSlotBag = getAtlasBag(0)
+        if #atlasSlotBag.getObjects() > 0 then
+            lastFullBagIndex = i
+        end
+        putAtlasBag(atlasSlotBag)
+    end
+
+    -- Spawn the backmost bags contents
+    local atlasSlotBag = getAtlasBag(lastFullBagIndex)
     for _, obj in ipairs(atlasSlotBag.getObjects()) do
         for _, countAndTag in ipairs(countsAndTags) do
             if dataTableContains(obj.tags, countAndTag.tag) then
@@ -657,6 +717,21 @@ function spawnAllFromBagAtTransform(bag, baseTransform)
             if dataTableContains(obj.tags, tags.site) then bagObj.setColorTint(Color(0,0,0)) end
         end
     end
+end
+
+function isPortalEmpty(zone)
+    -- Validate that the portal is empty
+    if #portal.sites + #portal.edifices + #portal.relics + #portal.shadow > 0 then
+        printToAll("ERROR: Cannot Summon while storing sites\n")
+        return false
+    end
+    for _, obj in ipairs(zone.getObjects(true)) do
+        if obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice) or obj.hasTag(tags.shadow) then
+            printToAll("ERROR: Cannot Summon while pieces are on the Portal\n")
+            return false
+        end
+    end
+    return true
 end
 
 -- ==============================
