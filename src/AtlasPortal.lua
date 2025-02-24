@@ -60,7 +60,7 @@ local buttons = {
     retrieve = {
         click_function = "retrieveInit",
         function_owner = self,
-        label          = "→ Summon a Site →",
+        label          = "→ Summon a Site\nfrom the back →",
         position       = {-1.85, 0, 0.85},
         scale          = {1.0,   1.0,   2.0 },
         rotation       = {0, 0, 0},
@@ -69,12 +69,12 @@ local buttons = {
         font_size      = 77,
         color          = hexToColor("#588087"),
         font_color     = {1, 1, 1, 1},
-        tooltip        = "Retrieve a Site and all objects there from the front of the Atlas Box", 
+        tooltip        = "Retrieve a Site and all objects there from the back of the Atlas Box", 
     },
     retrieveBack = {
         click_function = "retrieveBackInit",
         function_owner = self,
-        label          = "→ (from the back) →",
+        label          = "→ (or from the front) →",
         position       = {-1.85, 0, 2.},
         scale          = {1.0,   1.0,   2.0 },
         rotation       = {0, 0, 0},
@@ -83,7 +83,7 @@ local buttons = {
         font_size      = 50,
         color          = hexToColor("#588087"),
         font_color     = {1, 1, 1, 1},
-        tooltip        = "Retrieve a Site and all objects there from the back of the Atlas Box", 
+        tooltip        = "Retrieve a Site and all objects there from the front of the Atlas Box", 
     },
     setup = {
         click_function = "chronicleSetup",
@@ -313,9 +313,11 @@ function chronicleSetup(obj, color, alt_click)
         local mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
         -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
         local numSites = #objects.siteBag.getObjects()
-        for i = 1, numSites do
-            local atlasSlotBag = getAtlasBag(numSites-i)
-            rollAndAddItems(atlasSlotBag, i)
+        for i = 0, #objects.atlasBox.getObjects()-1 do
+            local atlasSlotBag = getAtlasBag(0)
+            if i < numSites then
+                rollAndAddItems(atlasSlotBag, i+1)
+            end
             putAtlasBag(atlasSlotBag)
         end
         -- Deal Starting Sites

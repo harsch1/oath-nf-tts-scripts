@@ -11,7 +11,7 @@ local guids = {
     Order = "275175",
   },
   Foundations = {
-    DeckSetup = '32975d'
+    DeckSetup = '373c0c'
   },
   EdificesBag = "1662f7"
 }
