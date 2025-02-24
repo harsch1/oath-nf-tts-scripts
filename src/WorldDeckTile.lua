@@ -59,7 +59,7 @@ end
 
 function OnStartedWithoutDeck()
   self.clearButtons()
-  params = {
+  local params = {
       click_function = "OnRandomizeNewDeck",
       function_owner = self,
       label          = "Randomize\nNew Deck",
@@ -78,7 +78,7 @@ end
 function CreateDeckSetupButtons()
   local deckSetupFoundation = getObjectFromGUID(guids.Foundations.DeckSetup)
   deckSetupFoundation.clearButtons()
-  params = {
+  local params = {
       click_function = "OnShuffleFairWorldDeck",
       function_owner = self,
       label          = "Automate",
@@ -93,7 +93,7 @@ function CreateDeckSetupButtons()
   }
   deckSetupFoundation.createButton(params)
 
-  params = {
+  local params = {
       click_function = "OnShuffleUnfairWorldDeck",
       function_owner = self,
       label          = "Automate",
