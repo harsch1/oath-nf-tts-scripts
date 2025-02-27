@@ -314,7 +314,7 @@ function chronicleSetup(obj, color, alt_click)
         -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
         local numSites = #objects.siteBag.getObjects()
         for i = 0, #objects.atlasBox.getObjects()-1 do
-            local atlasSlotBag = getAtlasBag(0)
+                        local atlasSlotBag = getAtlasBag(0)
             if i < numSites then
                 rollAndAddItems(atlasSlotBag, i+1)
             end
@@ -657,8 +657,10 @@ function putAtlasBag(bag)
     objects.atlasBox.addTag(tags.unlocked)
     if #bag.getObjects() > 0 then
         bag.setName(atlasSlotNames.full)
+        bag.setColorTint(hexToColor("#9999ff"))
     else
         bag.setName(atlasSlotNames.empty)
+        bag.setColorTint(hexToColor("#ff9999"))
     end
     objects.atlasBox.putObject(bag)
     if not wasUnlocked then objects.atlasBox.removeTag(tags.unlocked) end
