@@ -1,10 +1,9 @@
--- Atlas Box scripts written by harsch.  Last update:  02-01-2025
+-- Atlas Box scripts written by harsch and Frack.  Last update:  03-07-2025
 
-
--- ==============================
--- CONFIGURATION
--- ==============================
-require("src.config.AtlasPortalConfig")
+require("src/Utils/ColorUtils")
+require("src/Config/GeneralConfig")
+require("src/Config/AtlasPortalButtons")
+require("src/Utils/HelperFunctions")
 
 -- Objects for needed game objects.
 local objects = {
@@ -14,8 +13,11 @@ local objects = {
     shadowBag = nil,
     siteBag = nil,
     table = nil,
-    map = nil
+    map = nil,
+    dispossessedBag = nil,
 }
+
+local mapTransform = nil
 
 -- ==============================
 -- INITIALIZATION
@@ -55,6 +57,7 @@ function setupObjects()
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
         {objectName = "shadowBag", GUID = GUIDs.shadowBag, printableName = "Shadow Denizens Bag"},
         {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"},
+        {objectName = "dispossessedBag", GUID = GUIDs.dispossessedBag, printableName = "Dispossessed Bag"},
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"}
     }
     local foundAll = true
@@ -113,50 +116,54 @@ end
 -- ==============================
 
 function chronicleSetup(obj, color, alt_click)
-    if not alt_click then
-        -- If items are missing we need to retry setup
-        if not setupObjects() then
-            removeButtons(buttons.setup)
-            self.createButton(buttons.retry)
-            return
-        end
-        local mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
-        -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
-        local numSites = #objects.siteBag.getObjects()
-        for i = 0, #objects.atlasBox.getObjects()-1 do
-            local atlasSlotBag = getAtlasBag(0)
-            if i < numSites then
-                rollAndAddItems(atlasSlotBag, i+1)
+    function chronicleSetupCoroutine()
+        if not alt_click then
+            -- If items are missing we need to retry setup
+            if not setupObjects() then
+                removeButtons(buttons.setup)
+                self.createButton(buttons.retry)
+                return
             end
-            putAtlasBag(atlasSlotBag)
-        end
-        -- Deal Starting Sites
-        for siteNumber = 1,8 do
-            local atlasSlotBag = getAtlasBag(0)
-            spawnAllFromBagAtTransform(atlasSlotBag, getTransformStruct("site", siteNumber, mapTransform))
-            putAtlasBag(atlasSlotBag)
-        end
-        -- Clean up contents of remaining bags
-        local bagsAndTransforms = {
-            {bag = objects.edificeBag, transform = {position = objects.edificeBag.getPosition(), rotation = {x=0,y=180,z=0}}},
-            {bag = objects.relicBag, transform = getTransformStruct("relicStack", 0, mapTransform)}
-        }
-        for _, bagAndTransform in ipairs(bagsAndTransforms) do
-            for _, item in ipairs(bagAndTransform.bag.getObjects()) do
-                bagAndTransform.bag.takeObject(bagAndTransform.transform)
+            mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
+            -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
+            local numSites = #objects.siteBag.getObjects()
+            for i = 0, #objects.atlasBox.getObjects()-1 do
+                local atlasSlotBag = getAtlasBag(0)
+                if i < numSites then
+                    rollAndAddItems(atlasSlotBag, i+1)
+                end
+                putAtlasBag(atlasSlotBag)
+                coroutine.yield(0)
             end
-        end
+            -- Deal Starting Sites
+            for siteNumber = 1,8 do
+                local atlasSlotBag = getAtlasBag(0)
+                spawnAllFromBagAtTransform(atlasSlotBag, getTransformStruct("site", siteNumber, mapTransform), true)
+                coroutine.yield(0)
+            end
+            destroyObject(objects.siteBag)
 
-        -- Clean up the bags and add the chronicle created tag
-        self.addTag(tags.chronicleCreated)
-        removeButtons(buttons.setup)
-        destroyObject(objects.siteBag)
-        destroyObject(objects.edificeBag)
-        destroyObject(objects.relicBag)
-        printToAll("SETUP COMPLETE. Don't forget to add Edifices back to the corresponding suit decks before setting up the World Deck\n")
-        refreshStoreButton()
-        createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack)
+            createRelicDeck()
+            destroyObject(objects.relicBag)
+
+            returnEdifices()
+            destroyObject(objects.edificeBag)
+            
+            generateNewWorldDeck()
+
+            -- Clean up the bags and add the chronicle created tag
+            self.addTag(tags.chronicleCreated)
+            removeButtons(buttons.setup)
+            printToAll("ATLAS SETUP COMPLETE.\n")
+            refreshStoreButton()
+            createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack)
+            createDispossessed()
+            printToAll("WORLD DECK SETUP COMPLETE.\n")
+            
+        end
+        return 1
     end
+    startLuaCoroutine(self, "chronicleSetupCoroutine")
 end
 
 function rollAndAddItems(atlasSlotBag, i)
@@ -169,10 +176,109 @@ function rollAndAddItems(atlasSlotBag, i)
         [6] = {getRandomShadow, getRandomRelic, getRandomRelic}
     }
     local d6roll = math.random(1,6)
-    printToAll("Slot " .. i .. ", Roll " .. d6roll)
+    -- printToAll("Slot " .. i .. ", Roll " .. d6roll)
     atlasSlotBag.putObject(getRandomSite())
+    coroutine.yield(0)
     for _, func in ipairs(rollResults[d6roll] or {}) do
         atlasSlotBag.putObject(func())
+        coroutine.yield(0)
+    end
+end
+
+function returnEdifices()
+    local archiveConfig = {
+        {deck = nil, deckID = nil, name = "Arcane"},
+        {deck = nil, deckID = nil, name = "Beast"},
+        {deck = nil, deckID = nil, name = "Discord"},
+        {deck = nil, deckID = nil, name = "Hearth"},
+        {deck = nil, deckID = nil, name = "Nomad"},
+        {deck = nil, deckID = nil, name = "Order"}
+    }
+    for _, config in ipairs(archiveConfig) do
+        config.deck = getObjectFromGUID(GUIDs.archiveDecks[config.name])
+        if config.deck == nil then
+            printToAll("ERROR: Cannot find " .. config.name .. " archive deck by GUID")
+            return
+        end
+        config.deckID = next(config.deck.getData().CustomDeck)
+        if config.deckID == nil then
+            printToAll("ERROR: Cannot find image DeckID for " .. config.name .. " archive deck")
+            return
+        end
+    end
+    for i = 1, #objects.edificeBag.getObjects() do
+        local edifice = objects.edificeBag.takeObject({index = 0})
+        coroutine.yield(0)
+        local deckID = next(edifice.getData().CustomDeck)
+        for _, config in ipairs(archiveConfig) do
+            if deckID == config.deckID then
+                config.deck.putObject(edifice)
+                break
+            end
+        end
+    end
+end
+
+function generateNewWorldDeck() 
+    local decks = getArchiveDecks()
+    local firstCard = nil
+    local worldDeck = nil
+    -- add 9 cards from each suit
+    for _, suit in ipairs(suits) do
+        local deck = decks[suit]
+        deck.setRotation({0,0,180})
+        deck.shuffle()
+        for i=1, 9 do
+            local newCard = deck.takeObject();
+            coroutine.yield(0)
+            if firstCard == nil then
+                local deckPosition = getTransformStruct("worldDeck", 0, mapTransform)
+                firstCard = newCard
+                firstCard.setPosition(deckPosition.position)
+                firstCard.setRotation(deckPosition.rotation)
+            elseif worldDeck == nil then
+                worldDeck = firstCard.putObject(newCard)
+                worldDeck.setName("World Deck")
+            else
+                worldDeck.putObject(newCard)
+            end
+        end
+    end
+end
+
+function createRelicDeck()
+    local firstRelic = nil
+    local relicDeck = nil
+    for _, item in ipairs(objects.relicBag.getObjects()) do
+        local relic = objects.relicBag.takeObject()
+        coroutine.yield(0)
+        local deckPosition = getTransformStruct("relicStack", 0, mapTransform)
+        if firstRelic == nil then
+            firstRelic = relic
+            firstRelic.setPosition(deckPosition.position)
+            firstRelic.setRotation(deckPosition.rotation)
+        elseif relicDeck == nil then
+            relicDeck = firstRelic.putObject(relic)
+            relicDeck.setName("Relic Deck")
+        else
+            relicDeck.putObject(relic)
+        end
+        coroutine.yield(0)
+    end
+
+end
+
+function createDispossessed() 
+    local decks = getArchiveDecks()
+    -- add 2 cards from each suit
+    for _, suit in ipairs(suits) do
+        local deck = decks[suit]
+        deck.shuffle()
+        for i=1, 2 do
+            objects.dispossessedBag.putObject(deck.takeObject())
+            coroutine.yield(0)
+        end
+        objects.dispossessedBag.shuffle()
     end
 end
 
@@ -191,6 +297,7 @@ end
 function getRandomEdifice()
     return getRandomObjectFromContainer(objects.edificeBag, true)
 end
+
 
 -- ==============================
 -- ATLAS BOX STORAGE
@@ -342,8 +449,7 @@ function retrieve(zone)
         end
     end
     self.setLock(true)
-    spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform)
-    putAtlasBag(atlasSlotBag)
+    spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform, false)
     
     -- Print message with what was summoned
     local messageParts = {}
@@ -394,8 +500,7 @@ function retrieveBack(zone)
         end
     end
     self.setLock(true)
-    spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform)
-    putAtlasBag(atlasSlotBag)
+    spawnAllFromBagAtTransform(atlasSlotBag, spawnTransform, false)
     
     -- Print message with what was summoned
     local messageParts = {}
@@ -489,48 +594,65 @@ function getTransformStruct(tag, index, baseTransform)
 end
 
 -- Spawn all objects from a bag at a given position and rotation
-function spawnAllFromBagAtTransform(bag, baseTransform) 
-    local relicNumber, denizenNumber, denizenCount = 0, 0, 0;
-    local atlasObjects = bag.getObjects()
-    for _, obj in ipairs(atlasObjects) do
-        if dataTableContains(obj.tags, tags.edifice) then
-            denizenCount = denizenCount + 1
+function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup) 
+    function spawnAllFromBagAtTransformCoroutine() 
+        local relicNumber, denizenNumber, denizenCount = 0, 0, 0;
+        local shadow = nil
+        local atlasObjects = bag.getObjects()
+        for _, obj in ipairs(atlasObjects) do
+            if dataTableContains(obj.tags, tags.edifice) then
+                denizenCount = denizenCount + 1
+            end
+            -- take shadows out early and then move them after site loads
+            if dataTableContains(obj.tags, tags.shadow) then
+                shadow = bag.takeObject({
+                    guid = obj.guid, 
+                    position = baseTransform.position,
+                    rotation = baseTransform.rotation
+                })
+            end
         end
-    end
-    for _, obj in ipairs(atlasObjects) do
-        local transform = nil
-        if dataTableContains(obj.tags, tags.site) then
-            transform = baseTransform
-        elseif dataTableContains(obj.tags, tags.shadow) then
-            transform = getTransformStruct("shadow", 0, baseTransform)
-        elseif dataTableContains(obj.tags, tags.edifice) then
-            transform = getTransformStruct("denizen", denizenNumber, baseTransform)
-            denizenNumber = denizenNumber+1
-        elseif dataTableContains(obj.tags, tags.relic) then
-            transform = getTransformStruct("relic", relicNumber, getTransformStruct("denizen", denizenCount, baseTransform))
-            relicNumber = relicNumber+1
-        end
-        if transform then
-            local bagObj = bag.takeObject({
-                guid = obj.guid, 
-                position = transform.position,
-                rotation = transform.rotation,
-            })
-            -- it takes the sites a moment to load so lock objects for a moment so colliders work properly
-            Wait.condition(
-                function()
+        atlasObjects = bag.getObjects()
+        -- Take out sites, edifices and relics
+        for _, obj in ipairs(atlasObjects) do
+            coroutine.yield(0)
+            local transform = nil
+            if dataTableContains(obj.tags, tags.site) then
+                transform = baseTransform
+            elseif dataTableContains(obj.tags, tags.edifice) then
+                transform = getTransformStruct("denizen", denizenNumber, baseTransform)
+                denizenNumber = denizenNumber+1
+            elseif dataTableContains(obj.tags, tags.relic) then
+                transform = getTransformStruct("relic", relicNumber, getTransformStruct("denizen", denizenCount, baseTransform))
+                relicNumber = relicNumber+1
+            end
+            if transform then
+                local bagObj = bag.takeObject({
+                    guid = obj.guid, 
+                    position = transform.position,
+                    rotation = transform.rotation,
+                })
+                if dataTableContains(obj.tags, tags.site) then
                     bagObj.setLock(true)
-                    Wait.time(function()
-                        bagObj.setLock(false)
-                    end, 3)
-                end,
-                function()
-                    return not bagObj.isSmoothMoving()
+                    Wait.condition(function()
+                        if shadow then
+                            local shadowTransform = getTransformStruct("shadow", 0, baseTransform)
+                            shadow.setPosition(shadowTransform.position)
+                            shadow.setRotation(shadowTransform.rotation)
+                        end
+                        if not duringSetup then
+                            bagObj.setLock(false)
+                        end
+                    end, function()
+                        return not bagObj.isSmoothMoving()
+                    end)
                 end
-            )
-            if dataTableContains(obj.tags, tags.site) then bagObj.setColorTint(Color(0,0,0)) end
+            end
         end
-    end
+        putAtlasBag(bag)
+        return 1
+        end
+    startLuaCoroutine(self, "spawnAllFromBagAtTransformCoroutine")
 end
 
 function isPortalEmpty(zone)
@@ -548,75 +670,10 @@ function isPortalEmpty(zone)
     return true
 end
 
--- ==============================
--- GENERAL ULILTIY
--- ==============================
-
-function dataTableContains(table, x)
-    for _, obj in ipairs(table) do
-        if obj == x then return true end
+function getArchiveDecks() 
+    local decks = {} 
+    for deckName, guid in pairs(GUIDs.archiveDecks) do
+        decks[deckName] = getObjectFromGUID(guid)
     end
-    return false
-end
-
-function getRandomObjectFromContainer(container, flipped)
-    local objects = container.getObjects()
-    if #objects == 0 then return nil end  -- Prevent errors when bag is empty
-    local selected = objects[math.random(1, #objects)]
-
-    return container.takeObject({
-        guid = selected.guid,
-        position = vectorSum(container.getPosition(), {x = 0, y = 5, z = 0}),
-        rotation = flipped and vectorSum({x = 180, y = 180, z = 0},container.getRotation()) or container.getRotation(),
-    })
-end
-
-function vectorSum(v1, v2)
-    return {
-        x = v1.x + v2.x,
-        y = v1.y + v2.y,
-        z = v1.z + v2.z
-    }
-end
-
--- Function to convert hex color to Color object (added early to not break buttons store)
-function hexToColor(hex)
-    -- Remove the "#" if it exists
-    hex = hex:gsub("#", "")
-
-    -- Convert each pair of hex digits to decimal and then to float
-    local r = tonumber(hex:sub(1, 2), 16) / 255
-    local g = tonumber(hex:sub(3, 4), 16) / 255
-    local b = tonumber(hex:sub(5, 6), 16) / 255
-
-    -- Return the RGB values as floats
-    return Color(r, g, b)
-end
-
-function removeButtons(...)
-    local buttonsToRemove = {...}
-    for _, buttonToRemove in ipairs(buttonsToRemove) do
-        local buttonIndex = nil
-        if self.getButtons() then
-            for i, button in ipairs(self.getButtons()) do
-                if button and button.label == buttonToRemove.label then
-                    buttonIndex = button.index
-                    break
-                end
-            end
-            if buttonIndex then self.removeButton(buttonIndex) end
-        end
-    end
-end
-
-function createButtons(...)
-    local buttonsToCreate = {...}
-    for _, buttonToCreate in ipairs(buttonsToCreate) do
-        self.createButton(buttonToCreate)
-    end
-end
-
-function addTagAndReturn(item, tag)
-    item.addTag(tag)
-    return item
+    return decks
 end

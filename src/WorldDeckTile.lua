@@ -1,29 +1,5 @@
 
-local suits = {"Arcane","Beast","Discord","Hearth","Nomad","Order"}
-
-local guids = {
-  Archive = {
-    Arcane = "a79848",
-    Beast = "d1f201",
-    Discord = "d40870",
-    Hearth = "31eab2",
-    Nomad = "6deb3d",
-    Order = "275175",
-  },
-  Foundations = {
-    DeckSetup = '373c0c'
-  },
-  EdificesBag = "1662f7"
-}
-
-local suitColors = {
-  Arcane = '6f3788',
-  Beast = "a23723",
-  Discord = "33190c",
-  Hearth = "e54622",
-  Nomad = "49a281",
-  Order = "263f86",
-}
+require("src/Config/GeneralConfig")
 
 local VisionBackURL = "http://tts.ledergames.com/Oath/cards/3_2_0/cardbackVision.jpg"
 
@@ -76,7 +52,7 @@ function OnStartedWithoutDeck()
 end
 
 function CreateDeckSetupButtons()
-  local deckSetupFoundation = getObjectFromGUID(guids.Foundations.DeckSetup)
+  local deckSetupFoundation = getObjectFromGUID(GUIDs.foundations.deckSetup)
   deckSetupFoundation.clearButtons()
   local params = {
       click_function = "OnShuffleFairWorldDeck",
@@ -111,7 +87,7 @@ end
 
 
 
--- if a deck couldn't be found with the expected guids, this function can request it manually
+-- if a deck couldn't be found with the expected GUIDs, this function can request it manually
 function RequestDeckGuid_Coroutine(deckName, player_color)
   local message = 
     "There was an error. Please [ffffff][i][b]ctrl+select[/b][/i][-] the [b]["..
@@ -132,11 +108,11 @@ end
 
 function GetArchiveCardDecks_Coroutine(player_color)
   local result = {}
-  for deckName, guid in pairs(guids.Archive) do
+  for deckName, guid in pairs(GUIDs.archiveDecks) do
     result[deckName] = getObjectFromGUID(guid)
     if result[deckName] == nil then
-      guids.Archive[deckName] = RequestDeckGuid_Coroutine(deckName, player_color)
-      result[deckName] = getObjectFromGUID(guids.Archive[deckName])
+      GUIDs.archiveDecks[deckName] = RequestDeckGuid_Coroutine(deckName, player_color)
+      result[deckName] = getObjectFromGUID(GUIDs.archiveDecks[deckName])
     end
   end
 
@@ -307,7 +283,7 @@ end
 function OnRandomizeNewDeck(_, player_color, _)
 
   -- edifices bag is deleted by the atlas setup. if it still exists, the deck can't be made yet.
-  if (getObjectFromGUID(guids.EdificesBag) ~= nil) then
+  if (getObjectFromGUID(GUIDs.edifices) ~= nil) then
     broadcastToColor("Set up the atlas box and organize the Edifices first!", player_color, {r=0.8, g=0, b=0})
     return
   end
@@ -315,8 +291,6 @@ function OnRandomizeNewDeck(_, player_color, _)
   function helper_coroutine()
 
     local decks = GetArchiveCardDecks_Coroutine(player_color)
-
-    -- TODO: pull edifices out of edifice bag and sort them by suit
 
     -- add 9 cards from each suit
     for _, suit in ipairs(suits) do
