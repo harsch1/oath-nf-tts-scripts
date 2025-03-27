@@ -8,13 +8,10 @@ require("src/Utils/HelperFunctions")
 -- Objects for needed game objects.
 local objects = {
     atlasBox = nil,
-    edificeBag = nil,
     relicBag = nil,
-    shadowBag = nil,
     siteBag = nil,
     table = nil,
     map = nil,
-    dispossessedBag = nil,
 }
 
 local mapTransform = nil
@@ -25,7 +22,7 @@ local mapTransform = nil
 
 function onLoad()
     -- Create all needed tags by adding them to this object and then removing them
-    local tagsToAdd = {tags.site, tags.relic, tags.edifice, tags.shadow, tags.unlocked}
+    local tagsToAdd = {tags.site, tags.relic, tags.edifice, tags.unlocked}
     for _, tag in ipairs(tagsToAdd) do
         self.addTag(tag)
         self.removeTag(tag)
@@ -53,11 +50,8 @@ function setupObjects()
     local setupTable = {
         {objectName = "table", GUID = GUIDs.table, printableName = "Table"},
         {objectName = "atlasBox", GUID = GUIDs.atlasBox, printableName = "Atlas Box Bag"},
-        {objectName = "edificeBag", GUID = GUIDs.edifices, printableName = "Edifices Bag"},
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
-        {objectName = "shadowBag", GUID = GUIDs.shadowBag, printableName = "Shadow Denizens Bag"},
         {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"},
-        {objectName = "dispossessedBag", GUID = GUIDs.dispossessedBag, printableName = "Dispossessed Bag"},
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"}
     }
     local foundAll = true
@@ -85,7 +79,7 @@ end
 -- Create the button for storing items in the atlas box.
 --    This button is dynamic and will change text and color for confirming storage 
 function refreshStoreButton()
-    local staged = #portal.sites + #portal.relics + #portal.edifices + #portal.shadow > 0
+    local staged = #portal.sites + #portal.relics + #portal.edifices > 0
     removeButtons(buttons.storeUnstaged, buttons.storeStaged)
     self.createButton(staged and buttons.storeStaged or buttons.storeUnstaged)
 end
@@ -100,8 +94,6 @@ end
 function tagAllItems()
     local bagTags = { 
         {bag = objects.relicBag,    tag = tags.relic},
-        {bag = objects.edificeBag,  tag = tags.edifice},
-        {bag = objects.shadowBag,   tag = tags.shadow}
     }
     for _, bagTag in ipairs(bagTags) do
         local bag, tag = bagTag.bag, bagTag.tag
@@ -130,7 +122,8 @@ function chronicleSetup(obj, color, alt_click)
             for i = 0, #objects.atlasBox.getObjects()-1 do
                 local atlasSlotBag = getAtlasBag(0)
                 if i < numSites then
-                    rollAndAddItems(atlasSlotBag, i+1)
+                    atlasSlotBag.putObject(getRandomSite())
+                    coroutine.yield(0)
                 end
                 putAtlasBag(atlasSlotBag)
                 coroutine.yield(0)
@@ -145,9 +138,6 @@ function chronicleSetup(obj, color, alt_click)
 
             createRelicDeck()
             destroyObject(objects.relicBag)
-
-            returnEdifices()
-            destroyObject(objects.edificeBag)
             
             generateNewWorldDeck()
 
@@ -166,59 +156,6 @@ function chronicleSetup(obj, color, alt_click)
     startLuaCoroutine(self, "chronicleSetupCoroutine")
 end
 
-function rollAndAddItems(atlasSlotBag, i)
-    local rollResults = {
-        [1] = {getRandomEdifice},
-        [2] = {},
-        [3] = {getRandomRelic},
-        [4] = {getRandomRelic, getRandomRelic},
-        [5] = {getRandomShadow, getRandomRelic},
-        [6] = {getRandomShadow, getRandomRelic, getRandomRelic}
-    }
-    local d6roll = math.random(1,6)
-    -- printToAll("Slot " .. i .. ", Roll " .. d6roll)
-    atlasSlotBag.putObject(getRandomSite())
-    coroutine.yield(0)
-    for _, func in ipairs(rollResults[d6roll] or {}) do
-        atlasSlotBag.putObject(func())
-        coroutine.yield(0)
-    end
-end
-
-function returnEdifices()
-    local archiveConfig = {
-        {deck = nil, deckID = nil, name = "Arcane"},
-        {deck = nil, deckID = nil, name = "Beast"},
-        {deck = nil, deckID = nil, name = "Discord"},
-        {deck = nil, deckID = nil, name = "Hearth"},
-        {deck = nil, deckID = nil, name = "Nomad"},
-        {deck = nil, deckID = nil, name = "Order"}
-    }
-    for _, config in ipairs(archiveConfig) do
-        config.deck = getObjectFromGUID(GUIDs.archiveDecks[config.name])
-        if config.deck == nil then
-            printToAll("ERROR: Cannot find " .. config.name .. " archive deck by GUID")
-            return
-        end
-        config.deckID = next(config.deck.getData().CustomDeck)
-        if config.deckID == nil then
-            printToAll("ERROR: Cannot find image DeckID for " .. config.name .. " archive deck")
-            return
-        end
-    end
-    for i = 1, #objects.edificeBag.getObjects() do
-        local edifice = objects.edificeBag.takeObject({index = 0})
-        coroutine.yield(0)
-        local deckID = next(edifice.getData().CustomDeck)
-        for _, config in ipairs(archiveConfig) do
-            if deckID == config.deckID then
-                config.deck.putObject(edifice)
-                break
-            end
-        end
-    end
-end
-
 function generateNewWorldDeck() 
     local decks = getArchiveDecks()
     local firstCard = nil
@@ -226,7 +163,7 @@ function generateNewWorldDeck()
     -- add 9 cards from each suit
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
-        deck.setRotation({0,0,180})
+        deck.setRotation({0,180,180})
         deck.shuffle()
         for i=1, 9 do
             local newCard = deck.takeObject();
@@ -265,27 +202,35 @@ function createRelicDeck()
         end
         coroutine.yield(0)
     end
-
 end
 
 function createDispossessed() 
     local decks = getArchiveDecks()
+    local firstCard = nil
+    local dispossessed = nil
     -- add 2 cards from each suit
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
         deck.shuffle()
         for i=1, 2 do
-            objects.dispossessedBag.putObject(deck.takeObject())
+            local newCard = deck.takeObject();
             coroutine.yield(0)
+            if firstCard == nil then
+                local deckPosition = getTransformStruct("dispossessed", 0, mapTransform)
+                firstCard = newCard
+                firstCard.setPosition(deckPosition.position)
+                firstCard.setRotation(deckPosition.rotation)
+            elseif dispossessed == nil then
+                dispossessed = firstCard.putObject(newCard)
+                dispossessed.setName("Dispossessed")
+            else
+                dispossessed.putObject(newCard)
+            end
         end
-        objects.dispossessedBag.shuffle()
     end
 end
 
 -- Get Elements for creating Chronicle
-function getRandomShadow()
-    return getRandomObjectFromContainer(objects.shadowBag, false)
-end
 function getRandomRelic()
     return getRandomObjectFromContainer(objects.relicBag, false)
 end
@@ -293,9 +238,6 @@ function getRandomSite()
     local site = getRandomObjectFromContainer(objects.siteBag, false)
     addTagAndReturn(site, tags.site).setRotation({x=0,y=180,z=0})
     return site
-end
-function getRandomEdifice()
-    return getRandomObjectFromContainer(objects.edificeBag, true)
 end
 
 
@@ -334,12 +276,11 @@ function store(zone)
     local tagsAndPortalObjs = {
         {tag = tags.site, data = portal.sites, printableName = "Site", },
         {tag = tags.relic, data = portal.relics, printableName = "Relic(s)"},
-        {tag = tags.edifice, data = portal.edifices, printableName = "Edifice"},
-        {tag = tags.shadow, data = portal.shadow, printableName = "Shadow"},
+        {tag = tags.edifice, data = portal.edifices, printableName = "Locked Card(s)"},
     }
     
     -- First time we validate the objects and check with the user
-    if #portal.sites + #portal.relics + #portal.edifices + #portal.shadow == 0 then
+    if #portal.sites + #portal.relics + #portal.edifices == 0 then
         countAndValidatePortalItems(zone, tagsAndPortalObjs)
         return
 
@@ -347,7 +288,7 @@ function store(zone)
     else
         -- Check that all objects match last button press
         local perfectMatch = true
-        local itemCount = #portal.sites + #portal.relics + #portal.edifices + #portal.shadow
+        local itemCount = #portal.sites + #portal.relics + #portal.edifices
         for _, obj in ipairs(zone.getObjects(true)) do
             for _, tagAndPortalObj in ipairs(tagsAndPortalObjs) do
                 if obj.hasTag(tagAndPortalObj.tag) then
@@ -403,7 +344,6 @@ function countAndValidatePortalItems(zone, tagsAndPortalObjs)
             emptyStoredPortalObjs()
             return
         end
-        if #portal.shadow > 1 then printToAll("More than 1 Shadow. This is not typical but may be an exceptional case with current rules.") end
         refreshStoreButton()
         printToAll("Click the send button again to confirm.\n")
     else
@@ -412,7 +352,7 @@ function countAndValidatePortalItems(zone, tagsAndPortalObjs)
 end
 
 function emptyStoredPortalObjs()
-    portal.sites, portal.relics, portal.edifices, portal.shadow = {}, {}, {}, {} 
+    portal.sites, portal.relics, portal.edifices = {}, {}, {} 
     refreshStoreButton()
 end
 
@@ -435,8 +375,7 @@ function retrieve(zone)
     local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
     local countsAndTags = {
         {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
-        {tag = tags.edifice, data = {count = 0, printName = "Edifice"}},
-        {tag = tags.shadow, data = {count = 0, printName = "Shadow"}},
+        {tag = tags.edifice, data = {count = 0, printName = "Locked Card(s)"}},
     }
 
     -- Spawn the frontmost bags contents
@@ -476,8 +415,7 @@ function retrieveBack(zone)
     local spawnTransform = getTransformStruct("portal", 0, {position= self.getPosition(), rotation = self.getRotation()})
     local countsAndTags = {
         {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
-        {tag = tags.edifice, data = {count = 0, printName = "Edifice"}},
-        {tag = tags.shadow, data = {count = 0, printName = "Shadow"}},
+        {tag = tags.edifice, data = {count = 0, printName = "Locked Card(s)"}},
     }
 
     -- Get the backmost full bag
@@ -597,19 +535,10 @@ end
 function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup) 
     function spawnAllFromBagAtTransformCoroutine() 
         local relicNumber, denizenNumber, denizenCount = 0, 0, 0;
-        local shadow = nil
         local atlasObjects = bag.getObjects()
         for _, obj in ipairs(atlasObjects) do
             if dataTableContains(obj.tags, tags.edifice) then
                 denizenCount = denizenCount + 1
-            end
-            -- take shadows out early and then move them after site loads
-            if dataTableContains(obj.tags, tags.shadow) then
-                shadow = bag.takeObject({
-                    guid = obj.guid, 
-                    position = baseTransform.position,
-                    rotation = baseTransform.rotation
-                })
             end
         end
         atlasObjects = bag.getObjects()
@@ -632,21 +561,6 @@ function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup)
                     position = transform.position,
                     rotation = transform.rotation,
                 })
-                if dataTableContains(obj.tags, tags.site) then
-                    bagObj.setLock(true)
-                    Wait.condition(function()
-                        if shadow then
-                            local shadowTransform = getTransformStruct("shadow", 0, baseTransform)
-                            shadow.setPosition(shadowTransform.position)
-                            shadow.setRotation(shadowTransform.rotation)
-                        end
-                        if not duringSetup then
-                            bagObj.setLock(false)
-                        end
-                    end, function()
-                        return not bagObj.isSmoothMoving()
-                    end)
-                end
             end
         end
         putAtlasBag(bag)
@@ -657,12 +571,12 @@ end
 
 function isPortalEmpty(zone)
     -- Validate that the portal is empty
-    if #portal.sites + #portal.edifices + #portal.relics + #portal.shadow > 0 then
+    if #portal.sites + #portal.edifices + #portal.relics > 0 then
         printToAll("ERROR: Cannot Summon while storing sites\n")
         return false
     end
     for _, obj in ipairs(zone.getObjects(true)) do
-        if obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice) or obj.hasTag(tags.shadow) then
+        if obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice) then
             printToAll("ERROR: Cannot Summon while pieces are on the Portal\n")
             return false
         end

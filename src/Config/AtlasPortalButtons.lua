@@ -100,6 +100,6 @@ buttons = {
         label          = "← Into Atlas Box ←",
         color          = hexToColor("#588087"),
         hover_color    = nil,
-        tooltip        = "Move Sites, Relics, Edifices and Shadow into the Atlas box", 
+        tooltip        = "Move Sites, Relics and Locked Cards and Shadow into the Atlas box", 
     }
 }
