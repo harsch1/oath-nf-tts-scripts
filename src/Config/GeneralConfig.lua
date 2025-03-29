@@ -24,7 +24,7 @@ GUIDs = {
 -- Tags to identify items
 tags = {
     chronicleCreated = "chronicleCreated",
-    edifice = "Locked Card",
+    edifice = "Edifice",
     relic = "Relic",
     site = "Site",
     unlocked = "Unlocked",
