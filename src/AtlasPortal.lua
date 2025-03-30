@@ -17,7 +17,7 @@ local objects = {
 local SITE_PREVIEW = "SITE PREVIEW"
 
 local mapTransform = nil
-local sitePreview = nil
+local sitePreview = {}
 local portalPosition = self.getPosition()
 local retrieveInCooldown = false
 
@@ -83,7 +83,7 @@ function setupObjects(isChronicleCreated)
     if isChronicleCreated then
         for _, obj in ipairs(getAllObjects()) do
             if obj.getDescription() == SITE_PREVIEW then
-                sitePreview = obj
+                table.insert(sitePreview, obj)
             end
             if obj.hasTag(tags.site) then
                 obj.addContextMenuItem("Preserve Site", markCard)
@@ -331,6 +331,7 @@ function unifySites()
             local isEmpty = true
             for _, obj in ipairs(hitObjects) do
                 if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
+                    if obj.hasTag(tags.site) then obj.setLock(true) end
                     isEmpty = false
                 end
             end
@@ -350,7 +351,6 @@ function unifySites()
                     if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
                         obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false)
                         coroutine.yield()
-                        if obj.hasTag(tags.site) then obj.setLock(true) end
                     end
                 end
                 table.insert(emptySites, slot)
@@ -436,9 +436,15 @@ function retrieveBack(owner, color)
 end
 
 function refreshRevisitPreview()
+    local portalPosition = self.getPosition()
     function refreshRevisitPreviewCoroutine()
-        if sitePreview then destroyObject(sitePreview) end
-        local previewPosition = vectorSum(portalPosition, vector(-8.5,0,-3))
+        if sitePreview then 
+            for _, obj in ipairs(sitePreview) do
+                destroyObject(obj)
+            end
+            sitePreview = {}
+        end
+        local previewPosition = vectorSum(portalPosition, vector(-8.75,0,-3))
         local lastFullBagIndex = -1
         for i = 0, #objects.atlasBox.getObjects()-1 do
             local atlasSlotBag = getAtlasBag(0)
@@ -449,24 +455,67 @@ function refreshRevisitPreview()
         end
         local firstBag = true
         if lastFullBagIndex == -1 then
-            sitePreview = nil
+            sitePreview = {}
             return 1
         end
         local atlasSlotBag = getAtlasBag(lastFullBagIndex)
+        local denizenCount = 0
+        local totalDenizenCount = 0
+        for _, obj in ipairs(atlasSlotBag.getObjects()) do
+            if dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.relic) then
+                totalDenizenCount = totalDenizenCount + 1
+            end
+        end
         for _, obj in ipairs(atlasSlotBag.getObjects()) do
             if dataTableContains(obj.tags, tags.site) then
                 local site = atlasSlotBag.takeObject({guid = obj.guid})
                 coroutine.yield(0)
-                sitePreview = site.clone({position = previewPosition})
-                sitePreview.setRotation(vector(0,180,0))
-                sitePreview.setScale(vector(1, 0.1, 1))
-                sitePreview.setLock(true)
-                sitePreview.setPosition(previewPosition)
-                sitePreview.setDescription(SITE_PREVIEW)
+                siteClone = site.clone({position = previewPosition})
+                siteClone.setRotation(vector(0,180,0))
+                siteClone.setScale(vector(1, 0.1, 1))
+                siteClone.setLock(true)
+                siteClone.setPosition(previewPosition)
+                siteClone.setDescription(SITE_PREVIEW)
+                table.insert(sitePreview, siteClone)
                 atlasSlotBag.putObject(site)
-                putAtlasBag(atlasSlotBag)
+            end
+            if dataTableContains(obj.tags, tags.edifice) then
+                local denizen = atlasSlotBag.takeObject({guid = obj.guid})
+                coroutine.yield(0)
+                denizenClone = denizen.clone({position = previewPosition})
+                denizenClone.setRotation(vector(0,180,0))
+                denizenClone.setScale(vector(0.5, 0.1, 0.5))
+                denizenClone.setLock(true)
+                denizenClone.setPosition(vectorSum(
+                    previewPosition,
+                    vector(2.65, .001*denizenCount, totalDenizenCount>1 and 0.6/(4-totalDenizenCount) - (0.6*denizenCount) or 0)
+                ))
+                denizenClone.setDescription(SITE_PREVIEW)
+                denizenCount = denizenCount + 1
+                table.insert(sitePreview, denizenClone)
+                atlasSlotBag.putObject(denizen)
             end
         end
+        
+        for _, obj in ipairs(atlasSlotBag.getObjects()) do
+            if dataTableContains(obj.tags, tags.relic) then
+                local relic = atlasSlotBag.takeObject({guid = obj.guid})
+                coroutine.yield(0)
+                relicClone = relic.clone({position = previewPosition})
+                relicClone.setRotation(vector(0,180,180))
+                relicClone.setScale(vector(0.275, 0.1, 0.275))
+                relicClone.setLock(true)
+                relicClone.setPosition(vectorSum(
+                    previewPosition,
+                    vector(2.65, .001*denizenCount, totalDenizenCount>1 and 0.6/(4-totalDenizenCount) - (0.6*denizenCount) or 0)
+                ))
+                relicClone.setDescription(SITE_PREVIEW)
+                denizenCount = denizenCount + 1
+                table.insert(sitePreview, relicClone)
+                atlasSlotBag.putObject(relic)
+            end
+        end
+        putAtlasBag(atlasSlotBag)
         for i = lastFullBagIndex, #objects.atlasBox.getObjects()-2 do
             local atlasSlotBag = getAtlasBag(lastFullBagIndex)
             putAtlasBag(atlasSlotBag)
@@ -558,7 +607,7 @@ function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup)
             local transform = nil
             if dataTableContains(obj.tags, tags.site) then
                 transform = baseTransform
-            elseif dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.relic) then
+            elseif dataTableContains(obj.tags, tags.edifice) then
                 transform = getTransformStruct("denizen", denizenNumber, baseTransform)
                 denizenNumber = denizenNumber+1
             end
@@ -580,6 +629,32 @@ function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup)
                     bagObj.addContextMenuItem("Allow Site to Ruin", unMarkCard)
                 end
 
+            end
+        end
+        for _, obj in ipairs(bag.getObjects()) do
+            coroutine.yield(0)
+            local transform = nil
+            if dataTableContains(obj.tags, tags.relic) then
+                transform = getTransformStruct("relic", denizenNumber, baseTransform)
+                denizenNumber = denizenNumber+1
+            end
+            if transform then
+                local bagObj = bag.takeObject({
+                    guid = obj.guid, 
+                    rotation = transform.rotation,
+                    position = transform.position,
+                    callback_function = function(_obj)
+                        if _obj.hasTag(tags.site) and duringSetup then
+                            Wait.time(function ()
+                                _obj.setLock(true)
+                            end, 1.5)
+                        end
+                    end
+                })
+                if bagObj.hasTag(tags.site) then
+                    bagObj.addContextMenuItem("Preserve Site", markCard)
+                    bagObj.addContextMenuItem("Allow Site to Ruin", unMarkCard)
+                end
             end
         end
         putAtlasBag(bag)

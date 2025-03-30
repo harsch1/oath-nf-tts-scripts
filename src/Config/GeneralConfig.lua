@@ -49,7 +49,7 @@ portal = {
 pos = {
     -- relative to site
     denizen =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
-    relic =         function(i) return {x = -0.15, y = 0.1*i, z = -1.3+1.3*i} end,
+    relic  =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
     -- relative to atlas portal
     portal =        function(i) return {x = 0, y = 0.10, z = 0} end,
     -- relative to map
@@ -74,7 +74,7 @@ pos = {
 -- Rotations
 rot = {
     dispossessed =  {x = 0,   y = 180,  z = 180},
-    denizen =       {x = 180, y = 0,   z = 0},
+    denizen =       {x = 0, y = 180,   z = 0},
     portal =        {x = 0,   y = 180, z = 0},
     relic =         {x = 180, y = 0,   z = 0},
     relicStack =    {x = 180, y = 0,   z = 0},
