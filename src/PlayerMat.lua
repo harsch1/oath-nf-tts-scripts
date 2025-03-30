@@ -77,7 +77,8 @@ function CastForObjects()
     origin = self.getPosition() + vector(0,2*matSize.y,0),
     direction = vector(0,1,0),
     type=3,
-    size=matSize
+    size=matSize,
+    max_distance = 10
   })
 end
 
@@ -171,7 +172,8 @@ function onObjectDrop(player_color, object)
     local hits = Physics.cast({
       origin = object.getPosition(),
       direction = vector(0,-1,0),
-      type=1
+      type=1,
+      max_distance = 10
     })
     for _, info in ipairs(hits) do
       if info.hit_object == self then

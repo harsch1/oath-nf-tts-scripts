@@ -18,7 +18,8 @@ GUIDs = {
     },
     foundations = {
       deckSetup = '373c0c'
-    }
+    },
+    scriptingTrigger = '84ebee'
 }
 
 -- Tags to identify items
@@ -28,6 +29,7 @@ tags = {
     relic = "Relic",
     site = "Site",
     unlocked = "Unlocked",
+    protected = "Protected"
 }
 
 -- Name strings to use for Atlas Slots depending on their states
