@@ -265,99 +265,112 @@ end
 
 function ruinSites()
     local toStore = {{},{},{},{},{},{},{},{}};
+    local completedSites = 0
+    local storedSites = 0
+    function quickStoreCoroutine()
+        local i = 8
+        -- Store the objects in the Atlas Box in the empty slot closest to the front
+        local foundEmptyBag = false
+        for j = 1, #objects.atlasBox.getObjects() do
+            local atlasSlotBag = getAtlasBag(0)
+            if i > 0 and #atlasSlotBag.getObjects() == 0 then
+                for _, obj in ipairs(toStore[i]) do
+                    atlasSlotBag.putObject(obj)
+                    storedSites = storedSites + 1
+                    coroutine.yield(0)
+                end
+                i = i - 1
+            end
+            putAtlasBag(atlasSlotBag)
+        end
+        refreshRevisitPreview()
+        if storedSites < 8 then
+            unifySites()
+        end
+        return 1
+    end
     function getRuinableObjectsAtSite(hitObjects, index)
-        function getRuinableObjectsAtSiteCoroutine()
-            local isProtected = false
-            local protectedSite
+        local isProtected = false
+        local protectedSite
 
+        for _, obj in ipairs(hitObjects) do
+            if obj.hasTag(tags.site) then
+                obj.setLock(false)
+                isProtected = obj.hasTag(tags.protected)
+                unMarkCard(_,_,obj)
+            end
+        end
+        if not isProtected then
             for _, obj in ipairs(hitObjects) do
-                if obj.hasTag(tags.site) then
-                    obj.setLock(false)
-                    isProtected = obj.hasTag(tags.protected)
-                    unMarkCard(_,_,obj)
+                if (obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice)) then
+                    table.insert(toStore[index], obj)
+                elseif not (obj.getGUID() == GUIDs.map) and
+                       not (obj.getGUID() == GUIDs.table) and
+                       not (obj.getGUID() == GUIDs.scriptingTrigger) and
+                       not (obj.memo == "trigger") then
+                    local randomOffset = {
+                        x = (math.random() - 0.5) * 15,
+                        y = (math.random() - 0.5) * 20,
+                        z = (math.random() - 0.5) * 10
+                    }
+                    obj.setPositionSmooth(vectorSum(vector(73, 10, -5),randomOffset), false, false)
                 end
             end
-            if not isProtected then
-                for _, obj in ipairs(hitObjects) do
-                    if (obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice)) then
-                        table.insert(toStore[index], obj)
-                    elseif not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
-                        local randomOffset = {
-                            x = (math.random() - 0.5) * 15,
-                            y = (math.random() - 0.5) * 20,
-                            z = (math.random() - 0.5) * 10
-                        }
-                        obj.setPositionSmooth(vectorSum(vector(73, 10, -5),randomOffset), false, false)
-                    end
-                end
+        end
+        completedSites = completedSites + 1
+
+        local waitCount = 0
+        if index == 1 then
+            while completedSites < 8 do
+                printToAll("Waiting for " .. waitCount)
+                waitCount = waitCount + 1
             end
-            
-            return 1
-        end 
-        startLuaCoroutine(self, "getRuinableObjectsAtSiteCoroutine")
+            startLuaCoroutine(self, "quickStoreCoroutine")
+        end
     end
     getObjectsAtSites(getRuinableObjectsAtSite, false)
-    Wait.time(function()
-        function quickStoreCoroutine()
-            local i = 8
-            -- Store the objects in the Atlas Box in the empty slot closest to the front
-            local foundEmptyBag = false
-            for j = 1, #objects.atlasBox.getObjects() do
-                local atlasSlotBag = getAtlasBag(0)
-                if i > 0 and #atlasSlotBag.getObjects() == 0 then
-                    for _, obj in ipairs(toStore[i]) do
-                        atlasSlotBag.putObject(obj)
-                        coroutine.yield(0)
-                    end
-                    i = i - 1
-                end
-                putAtlasBag(atlasSlotBag)
-            end
-            refreshRevisitPreview()
-            unifySites()
-            return 1
-        end
-        startLuaCoroutine(self, "quickStoreCoroutine")
-    end, 0.5)
 end
 
 function unifySites()
     local emptySites = {}
+    local lastCompletedSlot = 0
     function unifySitesCallback(hitObjects, slot)
-        function unifySitesCoroutine()
-            for j = 1, 25*slot do
-                coroutine.yield(0)
+        local waitCount = 0
+        while slot - lastCompletedSlot > 1 do
+            printToAll("Waiting for " .. waitCount)
+            waitCount = waitCount + 1
+        end
+        local isEmpty = true
+        for _, obj in ipairs(hitObjects) do
+            if not (obj.getGUID() == GUIDs.map) and
+               not (obj.getGUID() == GUIDs.table) and
+               not (obj.getGUID() == GUIDs.scriptingTrigger) and
+               not (obj.memo == "trigger")  then
+                if obj.hasTag(tags.site) then obj.setLock(true) end
+                isEmpty = false
             end
-            local isEmpty = true
+        end
+        if isEmpty then
+            table.insert(emptySites, slot)
+        elseif #emptySites > 0 then
+            local destinationSlot = table.remove(emptySites, 1)
+            local deltaPosition = vectorSum(
+                {
+                    x = getTransformStruct("site", slot, mapTransform).position.x*-1,
+                    y = getTransformStruct("site", slot, mapTransform).position.y*-1,
+                    z = getTransformStruct("site", slot, mapTransform).position.z*-1,
+                },
+                getTransformStruct("site", destinationSlot, mapTransform).position
+            )
             for _, obj in ipairs(hitObjects) do
                 if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
-                    if obj.hasTag(tags.site) then obj.setLock(true) end
-                    isEmpty = false
+                    obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false)
                 end
             end
-            if isEmpty then
-                table.insert(emptySites, slot)
-            elseif #emptySites > 0 then
-                local destinationSlot = table.remove(emptySites, 1)
-                local deltaPosition = vectorSum(
-                    {
-                        x = getTransformStruct("site", slot, mapTransform).position.x*-1,
-                        y = getTransformStruct("site", slot, mapTransform).position.y*-1,
-                        z = getTransformStruct("site", slot, mapTransform).position.z*-1,
-                    },
-                    getTransformStruct("site", destinationSlot, mapTransform).position
-                )
-                for _, obj in ipairs(hitObjects) do
-                    if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
-                        obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false)
-                        coroutine.yield()
-                    end
-                end
-                table.insert(emptySites, slot)
-            end
-            return 1
+            table.insert(emptySites, slot)
         end
-        startLuaCoroutine(self, "unifySitesCoroutine")
+        lastCompletedSlot = slot
+        return 1
     end
     getObjectsAtSites(unifySitesCallback, true)    
 end
@@ -584,18 +597,6 @@ function putAtlasBag(bag)
     if not wasUnlocked then objects.atlasBox.removeTag(tags.unlocked) end
 end
 
--- Get transform for a given tag and index
-    -- Can provide a base position
-function getTransformStruct(tag, index, baseTransform)
-    return {
-        position = vectorSum(
-            pos[tag](index or 1), 
-            (baseTransform and baseTransform.position or {x=0,y=0,z=0})
-        ),
-        rotation = rot[tag],
-    }
-end
-
 -- Spawn all objects from a bag at a given position and rotation
 function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup) 
     function spawnAllFromBagAtTransformCoroutine() 
@@ -666,34 +667,34 @@ end
 
 
 function getObjectsAtSites(callback, forwards)
-    local startIndex, endIndex, step = 1, 8, 1
-    if not forwards then
-        startIndex, endIndex, step = 8, 1, -1
-    end
-    function getObjectsAtSitesCoroutine()
-        for i = startIndex, endIndex, step do
-            local zone = spawnObject({
-                type = "FogOfWarTrigger",
-                position = vectorSum(getTransformStruct("site", i, mapTransform).position, vector(5.65, 0, 0)),
-                scale = vector(19.5,2,5.4),
-                sound = false,
-                callback_function = function(createdZone)
-                    Wait.time(function()
-                        local hitObjects = createdZone.getObjects(true);
-                        callback(hitObjects,i)
-                        Wait.time(function ()
-                            destroyObject(createdZone)
-                        end, 0.1)
-                    end, 0.10)
-                end
-            })
-            for j = 1, 15 do
-                coroutine.yield(0)
+    function getObjectAtSite(callback, index, endIndex, step)
+        local zone = spawnObject({
+            type = "FogOfWarTrigger",
+            position = vectorSum(getTransformStruct("site", index, mapTransform).position, vector(5.65, 0, 0)),
+            scale = vector(19.5,2,5.4),
+            sound = false,
+            callback_function = function(createdZone)
+                createdZone.memo = "trigger"
+                Wait.time(function()
+                    local hitObjects = createdZone.getObjects(true);
+                    callback(hitObjects, index)
+                    if not (index == endIndex) then
+                        getObjectAtSite(callback, index + step, endIndex, step)
+                    end
+                    Wait.time(function ()
+                        destroyObject(createdZone)
+                    end, 0.2)
+                end, 0.1)
             end
-        end
-        return 1
+        })
     end
-    startLuaCoroutine(self, "getObjectsAtSitesCoroutine")
+
+    
+    local s, e, c = 1, 8, 1
+    if not forwards then
+        s, e, c = 8, 1, -1
+    end
+    getObjectAtSite(callback, s, e, c)    
 end
 
 function getArchiveDecks() 

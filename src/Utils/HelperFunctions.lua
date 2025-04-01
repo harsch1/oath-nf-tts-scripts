@@ -74,3 +74,16 @@ function prettyPrintTable(obj, indent)
     end
     print(formatting .. "}")
 end
+
+
+-- Get transform for a given tag and index
+    -- Requires GeneralConfig
+    function getTransformStruct(tag, index, baseTransform)
+        return {
+            position = vectorSum(
+                pos[tag](index or 1), 
+                (baseTransform and baseTransform.position or {x=0,y=0,z=0})
+            ),
+            rotation = rot[tag],
+        }
+    end
