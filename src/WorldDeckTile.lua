@@ -1,18 +1,25 @@
 
 require("src/Config/GeneralConfig")
+require("src/Utils/HelperFunctions")
 
 local VisionBackURL = "http://tts.ledergames.com/Oath/cards/3_2_0/cardbackVision.jpg"
 
-
+local map = getObjectFromGUID(GUIDs.map)
+if map == nil then
+    printToAll("ERROR: Cannot find Map by GUID")
+end
+local worldDeckPosition = getTransformStruct("worldDeck", 0, {position = map.getPosition(), rotation = map.getRotation()})
 local cachedWorldDeck = nil
+
 function FindWorldDeck()
   if cachedWorldDeck and not cachedWorldDeck.isDestroyed() then
     return cachedWorldDeck
   end
   local hitList = Physics.cast({
-    origin = self.getPosition(),
+    origin = vectorSum(worldDeckPosition.position, vector(0, -1, 0)),
     direction = vector(0, 1, 0),
-    type = 1
+    type = 1,
+    max_distance = 10,
   })
   for _, hit_info in ipairs(hitList) do
     if hit_info.hit_object.type == "Deck" then
@@ -25,99 +32,43 @@ end
 
 function onload(save_str)
   CreateDeckSetupButtons()
-
-  if not FindWorldDeck() then
-    OnStartedWithoutDeck()
-  end
+  FindWorldDeck()
 end
 
-
-
-function OnStartedWithoutDeck()
+function CreateDeckSetupButtons()
   self.clearButtons()
   local params = {
-      click_function = "OnRandomizeNewDeck",
+      click_function = "OnShuffleFairWorldDeck",
       function_owner = self,
       label          = "Randomize\nNew Deck",
-      position       = {0, 0.0001, 0},
+      position       = {0, 0.1001, 0},
       rotation       = {0, 90, 0},
-      width          = 400,
-      height         = 400,
+      width          = 900,
+      height         = 1350,
       font_size      = 60,
-      color          = {0, 0, 0, 0},
+      color          = {0, 0, 0, 0.35},
       font_color     = {0, 0, 0, 0},
-      tooltip        = "Click to randomize a new deck",
+      tooltip        = 'Click to automatically set up deck',
+  }
+  self.createButton(params)
+
+  
+  local params = {
+    click_function = "OnShuffleUnfairWorldDeck",
+    function_owner = self,
+    label          = "Randomize\nNew Deck",
+    position       = {0, -0.1001, 0},
+    rotation       = {180, 90, 0},
+    width          = 900,
+    height         = 1350,
+    font_size      = 60,
+    color          = {0, 0, 0, 0.35},
+    font_color     = {0, 0, 0, 0},
+    tooltip        = 'Click to automatically set up deck',
   }
   self.createButton(params)
 end
 
-function CreateDeckSetupButtons()
-  local deckSetupFoundation = getObjectFromGUID(GUIDs.foundations.deckSetup)
-  deckSetupFoundation.clearButtons()
-  local params = {
-      click_function = "OnShuffleFairWorldDeck",
-      function_owner = self,
-      label          = "Automate",
-      position       = {0, 0.5, 1.4},
-      rotation       = {0, 0, 0},
-      width          = 800,
-      height         = 200,
-      font_size      = 150,
-      color          = Color.fromHex('#E0E2E1E7'),
-      font_color     = Color.fromHex('#398c93'),
-      tooltip        = 'Click to automatically set up deck',
-  }
-  deckSetupFoundation.createButton(params)
-
-  local params = {
-      click_function = "OnShuffleUnfairWorldDeck",
-      function_owner = self,
-      label          = "Automate",
-      position       = {0, -0.5, 1.4},
-      rotation       = {0, 0, 180},
-      width          = 800,
-      height         = 200,
-      font_size      = 150,
-      color          = Color.fromHex('#f1e8dfe7'),
-      font_color     = Color.fromHex('#be5639'),
-      tooltip        = 'Click to automatically set up deck',
-  }
-  deckSetupFoundation.createButton(params)
-end
-
-
-
--- if a deck couldn't be found with the expected GUIDs, this function can request it manually
-function RequestDeckGuid_Coroutine(deckName, player_color)
-  local message = 
-    "There was an error. Please [ffffff][i][b]ctrl+select[/b][/i][-] the [b]["..
-    suitColors[deckName].."]"..
-    deckName..
-    "[-][/b] archive deck."
-
-  broadcastToColor(message, player_color, {r=0.8, g=0.8, b=0.8})
-  Player[player_color].clearSelectedObjects()
-
-  -- wait for player to select object
-  while (#Player[player_color].getSelectedObjects() ~= 1) do
-    coroutine.yield(0)
-  end
-
-  return Player[player_color].getSelectedObjects()[1].getGUID()
-end
-
-function GetArchiveCardDecks_Coroutine(player_color)
-  local result = {}
-  for deckName, guid in pairs(GUIDs.archiveDecks) do
-    result[deckName] = getObjectFromGUID(guid)
-    if result[deckName] == nil then
-      GUIDs.archiveDecks[deckName] = RequestDeckGuid_Coroutine(deckName, player_color)
-      result[deckName] = getObjectFromGUID(GUIDs.archiveDecks[deckName])
-    end
-  end
-
-  return result
-end
 
 function InsertCardInDeck(deck, card, index)
   local rotation = deck.getRotation()
@@ -197,7 +148,7 @@ function OnShuffleFairWorldDeck(_, player_color, _)
   -- find and shuffle world deck
   local worldDeck = FindWorldDeck()
   if worldDeck == nil then
-    broadcastToColor("World deck not found! Is this a new chronical? click the world deck slot to generate one.", player_color, {r=0.8, g=0, b=0})
+    broadcastToColor("World deck not found! Is this a new chronicle? Use the Atlas Portal to generate one.", player_color, {r=0.8, g=0, b=0})
     return
   end
   worldDeck.shuffle()
@@ -243,7 +194,7 @@ function OnShuffleUnfairWorldDeck(_, player_color, _)
   -- find and shuffle world deck
   local worldDeck = FindWorldDeck()
   if worldDeck == nil then
-    broadcastToColor("World deck not found! Is this a new chronical? click the world deck slot to generate one.", player_color, {r=0.8, g=0, b=0})
+    broadcastToColor("World deck not found! Is this a new chronicle? click the world deck slot to generate one.", player_color, {r=0.8, g=0, b=0})
     return
   end
   worldDeck.shuffle()
@@ -277,45 +228,5 @@ function OnShuffleUnfairWorldDeck(_, player_color, _)
       worldDeck = InsertCardInDeck(worldDeck, vision, index)
     end
   end
-end
-
-
-function OnRandomizeNewDeck(_, player_color, _)
-
-  -- edifices bag is deleted by the atlas setup. if it still exists, the deck can't be made yet.
-  if (getObjectFromGUID(GUIDs.edifices) ~= nil) then
-    broadcastToColor("Set up the atlas box and organize the Edifices first!", player_color, {r=0.8, g=0, b=0})
-    return
-  end
-
-  function helper_coroutine()
-
-    local decks = GetArchiveCardDecks_Coroutine(player_color)
-
-    -- add 9 cards from each suit
-    for _, suit in ipairs(suits) do
-      local deck = decks[suit]
-      local prevRotation = deck.getRotation()
-      deck.setRotation({prevRotation.x,prevRotation.y,180})
-      deck.shuffle()
-      for i=1, 9 do
-        deck.takeObject({
-          position = self.getPosition() + vector(0, 1, 0),
-          rotation = {self.getRotation().x, self.getRotation().y, 180},
-          smooth = false
-        })
-      end
-    end
-
-    -- wait 30 frames to give the cards time to settle into a single deck
-    for i=1, 30 do
-      coroutine.yield(0)
-    end
-
-    FindWorldDeck().setName("World Deck")
-
-    return 1
-  end
-  startLuaCoroutine(self, "helper_coroutine")
 end
 
