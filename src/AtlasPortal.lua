@@ -27,10 +27,15 @@ local retrieveInCooldown = false
 
 function onLoad() 
     -- Create all needed tags by adding them to this object and then removing them
-    local tagsToAdd = {tags.site, tags.relic, tags.edifice, tags.unlocked, tags.protected}
+    local tagsToAdd = {tags.site, tags.relic, tags.edifice, tags.unlocked, tags.protected, tags.ancient, tags.card}
     for _, tag in ipairs(tagsToAdd) do
         self.addTag(tag)
         self.removeTag(tag)
+    end
+    
+    if not (self.hasTag(tags.debug)) then
+        self.addTag(tags.debug)
+        self.removeTag(tags.debug)
     end
 
     local chronicleExists = self.hasTag(tags.chronicleCreated)
@@ -79,8 +84,7 @@ function setupObjects(isChronicleCreated)
                 foundAll = false
             end
         end
-    end
-    if isChronicleCreated then
+    else
         for _, obj in ipairs(getAllObjects()) do
             if obj.getDescription() == SITE_PREVIEW then
                 table.insert(sitePreview, obj)
@@ -138,7 +142,37 @@ function chronicleSetup(obj, color, alt_click)
                 self.createButton(buttons.retry)
                 return
             end
+            -- Tag all cards
+            printToAll("organizing cards...")
+            local decksDone = 0
+            for _, deck in pairs(getArchiveDecks()) do
+                function tagAllCardsInDeck(_deck)
+                    local deckSize = #deck.getObjects()
+                    for i = deckSize-1, 0, -1 do
+                        local card = deck.takeObject({index = i})
+                        for i = 0, 10 do
+                            coroutine.yield(0)
+                        end
+                        card.addTag(tags.card)
+                        for i = 0, 10 do
+                            coroutine.yield(0)
+                        end
+                        deck.putObject(card)
+                    end
+                    decksDone = decksDone+1;
+                    return 1
+                end
+                startLuaCoroutine(self, "tagAllCardsInDeck")
+            end
+            while decksDone < 6 do
+                coroutine.yield(0)
+            end
+            for _, deck in pairs(getArchiveDecks()) do
+                deck.setRotation({0,180,180})
+                deck.shuffle()
+            end
             -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
+            printToAll("creating the world...")
             local numSites = #objects.siteBag.getObjects()
             for i = 0, #objects.atlasBox.getObjects()-1 do
                 local atlasSlotBag = getAtlasBag(0)
@@ -165,7 +199,6 @@ function chronicleSetup(obj, color, alt_click)
             -- Clean up the bags and add the chronicle created tag
             self.addTag(tags.chronicleCreated)
             removeButtons(buttons.setup)
-            printToAll("ATLAS SETUP COMPLETE.")
             createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack, buttons.ruinSites,  buttons.unifySites)
             refreshRevisitPreview()
             createDispossessed()
@@ -184,11 +217,11 @@ function generateNewWorldDeck()
     -- add 9 cards from each suit
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
-        deck.setRotation({0,180,180})
-        deck.shuffle()
         for i=1, 9 do
             local newCard = deck.takeObject();
-            coroutine.yield(0)
+            for i = 0, 10 do
+                coroutine.yield(0)
+            end
             if firstCard == nil then
                 local deckPosition = getTransformStruct("worldDeck", 0, mapTransform)
                 firstCard = newCard
@@ -232,7 +265,6 @@ function createDispossessed()
     -- add 2 cards from each suit
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
-        deck.shuffle()
         for i=1, 2 do
             local newCard = deck.takeObject();
             coroutine.yield(0)
@@ -277,20 +309,21 @@ function ruinSites()
                 for _, obj in ipairs(toStore[i]) do
                     atlasSlotBag.putObject(obj)
                     storedSites = storedSites + 1
-                    coroutine.yield(0)
+                    for k = 0, 10 do
+                        coroutine.yield(0)
+                    end
                 end
                 i = i - 1
             end
             putAtlasBag(atlasSlotBag)
         end
         refreshRevisitPreview()
-        if storedSites < 8 then
-            unifySites()
-        end
+        unifySites()
         return 1
     end
     function getRuinableObjectsAtSite(hitObjects, index)
         local isProtected = false
+        local isAncient = false
         local protectedSite
 
         for _, obj in ipairs(hitObjects) do
@@ -298,11 +331,16 @@ function ruinSites()
                 obj.setLock(false)
                 isProtected = obj.hasTag(tags.protected)
                 unMarkCard(_,_,obj)
+                if obj.hasTag(tags.ancient) then
+                    isAncient = true
+                end
             end
         end
         if not isProtected then
             for _, obj in ipairs(hitObjects) do
                 if (obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice)) then
+                    table.insert(toStore[index], obj)
+                elseif (obj.hasTag(tags.card) and isAncient) then
                     table.insert(toStore[index], obj)
                 elseif not (obj.getGUID() == GUIDs.map) and
                        not (obj.getGUID() == GUIDs.table) and
@@ -333,44 +371,54 @@ end
 
 function unifySites()
     local emptySites = {}
-    local lastCompletedSlot = 0
+    local currentSlot = 1
     function unifySitesCallback(hitObjects, slot)
-        local waitCount = 0
-        while slot - lastCompletedSlot > 1 do
-            printToAll("Waiting for " .. waitCount)
-            waitCount = waitCount + 1
-        end
-        local isEmpty = true
-        for _, obj in ipairs(hitObjects) do
-            if not (obj.getGUID() == GUIDs.map) and
-               not (obj.getGUID() == GUIDs.table) and
-               not (obj.getGUID() == GUIDs.scriptingTrigger) and
-               not (obj.memo == "trigger")  then
-                if obj.hasTag(tags.site) then obj.setLock(true) end
-                isEmpty = false
+        function unifySitesCallbackCoroutine()
+            local waitCount = 0
+            while not (slot == currentSlot) do
+                coroutine.yield(0)
+                if isDebug() then printToAll("Waiting for " .. waitCount .. ", " .. currentSlot .. " " .. slot) end
+                waitCount = waitCount + 1
             end
-        end
-        if isEmpty then
-            table.insert(emptySites, slot)
-        elseif #emptySites > 0 then
-            local destinationSlot = table.remove(emptySites, 1)
-            local deltaPosition = vectorSum(
-                {
-                    x = getTransformStruct("site", slot, mapTransform).position.x*-1,
-                    y = getTransformStruct("site", slot, mapTransform).position.y*-1,
-                    z = getTransformStruct("site", slot, mapTransform).position.z*-1,
-                },
-                getTransformStruct("site", destinationSlot, mapTransform).position
-            )
+            local isEmpty = true
             for _, obj in ipairs(hitObjects) do
-                if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
-                    obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false)
+                if not (obj.getGUID() == GUIDs.map) and
+                not (obj.getGUID() == GUIDs.table) and
+                not (obj.getGUID() == GUIDs.scriptingTrigger) and
+                not (obj.memo == "trigger")  then
+                    if obj.hasTag(tags.site) then
+                        obj.setLock(true)
+                        isEmpty = false
+                    end
                 end
             end
-            table.insert(emptySites, slot)
+            if isEmpty then
+                table.insert(emptySites, slot)
+                currentSlot = slot+1
+            elseif #emptySites > 0 then
+                local destinationSlot = table.remove(emptySites, 1)
+                local deltaPosition = vectorSum(
+                    {
+                        x = getTransformStruct("site", slot, mapTransform).position.x*-1,
+                        y = getTransformStruct("site", slot, mapTransform).position.y*-1,
+                        z = getTransformStruct("site", slot, mapTransform).position.z*-1,
+                    },
+                    getTransformStruct("site", destinationSlot, mapTransform).position
+                )
+                for _, obj in ipairs(hitObjects) do
+                    if not (obj.getGUID() == GUIDs.map) and not (obj.getGUID() == GUIDs.table) and not (obj.getGUID() == GUIDs.scriptingTrigger) then
+                        obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false, true)
+                    end
+                end
+                for i = 0, 200 do
+                    coroutine.yield(0)
+                end
+                table.insert(emptySites, slot)
+                currentSlot = slot+1
+            end
+            return 1
         end
-        lastCompletedSlot = slot
-        return 1
+        startLuaCoroutine(self, "unifySitesCallbackCoroutine")
     end
     getObjectsAtSites(unifySitesCallback, true)    
 end
@@ -394,7 +442,8 @@ function retrieve(owner, color, fromBack)
             hasRetrieved = true
             local countsAndTags = {
                 {tag = tags.relic, data = {count = 0, printName = "Relic(s)"}},
-                {tag = tags.edifice, data = {count = 0, printName = "Locked Card(s)"}},
+                {tag = tags.edifice, data = {count = 0, printName = "Edifice(s)"}},
+                {tag = tags.card, data = {count = 0, printName = "Card(s)"}},
             }
             local bagIndex = 0
             if fromBack then
@@ -427,7 +476,9 @@ function retrieve(owner, color, fromBack)
                     table.insert(messageParts, countAndTag.data.count .. " " .. countAndTag.data.printName)
                 end
             end
-            printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ")) or ("Summoning Empty Site"))
+            if isDebug() then
+                printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ")) or ("Summoning Empty Site"))
+            end
             if fromBack then refreshRevisitPreview() end
             return
         end
@@ -608,7 +659,7 @@ function spawnAllFromBagAtTransform(bag, baseTransform, duringSetup)
             local transform = nil
             if dataTableContains(obj.tags, tags.site) then
                 transform = baseTransform
-            elseif dataTableContains(obj.tags, tags.edifice) then
+            elseif dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.card) then
                 transform = getTransformStruct("denizen", denizenNumber, baseTransform)
                 denizenNumber = denizenNumber+1
             end
@@ -710,7 +761,11 @@ function markCard(_, _, obj)
       obj.addTag(tags.protected)
   end
   
-  function unMarkCard(_, _, obj)
+function unMarkCard(_, _, obj)
     obj.highlightOff()
     obj.removeTag(tags.protected)
-  end
+end
+
+function isDebug()
+    return self.hasTag(tags.debug)
+end

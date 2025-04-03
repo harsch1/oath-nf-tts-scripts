@@ -29,7 +29,10 @@ tags = {
     relic = "Relic",
     site = "Site",
     unlocked = "Unlocked",
-    protected = "Protected"
+    protected = "Protected",
+    debug = "Debug",
+    ancient = "Ancient",
+    card = "Card"
 }
 
 -- Name strings to use for Atlas Slots depending on their states
