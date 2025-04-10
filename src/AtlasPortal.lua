@@ -394,7 +394,6 @@ function unifySites()
             end
             if isEmpty then
                 table.insert(emptySites, slot)
-                currentSlot = slot+1
             elseif #emptySites > 0 then
                 local destinationSlot = table.remove(emptySites, 1)
                 local deltaPosition = vectorSum(
@@ -414,8 +413,8 @@ function unifySites()
                     coroutine.yield(0)
                 end
                 table.insert(emptySites, slot)
-                currentSlot = slot+1
             end
+            currentSlot = slot+1
             return 1
         end
         startLuaCoroutine(self, "unifySitesCallbackCoroutine")
