@@ -1,4 +1,4 @@
--- Atlas Box scripts written by harsch and Frack.  Last update:  03-07-2025
+-- Atlas Box scripts written by harsch and Frack.  Last update:  04-10-2025
 
 require("src/Utils/ColorUtils")
 require("src/Config/GeneralConfig")
@@ -296,11 +296,12 @@ end
 -- ==============================
 
 function ruinSites()
-    local toStore = {{},{},{},{},{},{},{},{}};
+    local toStore = {};
     local completedSites = 0
     local storedSites = 0
     function quickStoreCoroutine()
-        local i = 8
+        prettyPrintTable(toStore)
+        local i = #toStore
         -- Store the objects in the Atlas Box in the empty slot closest to the front
         local foundEmptyBag = false
         for j = 1, #objects.atlasBox.getObjects() do
@@ -314,6 +315,11 @@ function ruinSites()
                     end
                 end
                 i = i - 1
+                if isDebug() then
+                    printToAll("Storing objects in bag " .. j)
+                end
+            elseif isDebug() then
+                printToAll("Skipping bag " .. j .. " because full")
             end
             putAtlasBag(atlasSlotBag)
         end
@@ -322,6 +328,7 @@ function ruinSites()
         return 1
     end
     function getRuinableObjectsAtSite(hitObjects, index)
+        printToAll(index)
         local isProtected = false
         local isAncient = false
         local protectedSite
@@ -337,11 +344,12 @@ function ruinSites()
             end
         end
         if not isProtected then
+            local toStoreSlot = {}
             for _, obj in ipairs(hitObjects) do
                 if (obj.hasTag(tags.site) or obj.hasTag(tags.relic) or obj.hasTag(tags.edifice)) then
-                    table.insert(toStore[index], obj)
+                    table.insert(toStoreSlot, obj)
                 elseif (obj.hasTag(tags.card) and isAncient) then
-                    table.insert(toStore[index], obj)
+                    table.insert(toStoreSlot, obj)
                 elseif not (obj.getGUID() == GUIDs.map) and
                        not (obj.getGUID() == GUIDs.table) and
                        not (obj.getGUID() == GUIDs.scriptingTrigger) and
@@ -353,6 +361,9 @@ function ruinSites()
                     }
                     obj.setPositionSmooth(vectorSum(vector(73, 10, -5),randomOffset), false, false)
                 end
+            end
+            if #toStoreSlot > 0 then
+                table.insert(toStore, 1, toStoreSlot)
             end
         end
         completedSites = completedSites + 1
@@ -377,7 +388,7 @@ function unifySites()
             local waitCount = 0
             while not (slot == currentSlot) do
                 coroutine.yield(0)
-                if isDebug() then printToAll("Waiting for " .. waitCount .. ", " .. currentSlot .. " " .. slot) end
+                if isDebug() and waitCount%20 == 0 then printToAll("Waiting for " .. waitCount/20 .. ", " .. currentSlot .. " " .. slot) end
                 waitCount = waitCount + 1
             end
             local isEmpty = true
