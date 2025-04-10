@@ -300,7 +300,6 @@ function ruinSites()
     local completedSites = 0
     local storedSites = 0
     function quickStoreCoroutine()
-        prettyPrintTable(toStore)
         local i = #toStore
         -- Store the objects in the Atlas Box in the empty slot closest to the front
         local foundEmptyBag = false
@@ -328,7 +327,6 @@ function ruinSites()
         return 1
     end
     function getRuinableObjectsAtSite(hitObjects, index)
-        printToAll(index)
         local isProtected = false
         local isAncient = false
         local protectedSite
@@ -625,6 +623,7 @@ function spawnRelics()
         putAtlasBag(atlasSlotBag)
     end
     printToAll("Retrieved " .. relicCount .. " relics from the Atlas Box")
+    refreshRevisitPreview()
 end
 
 -- ==============================
