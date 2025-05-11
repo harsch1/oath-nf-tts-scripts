@@ -53,8 +53,9 @@ pos = {
     -- relative to site
     denizen =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
     relic  =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
-    -- relative to atlas portal
+    -- relative to atlas portal/box
     portal =        function(i) return {x = 0, y = 0.10, z = 0} end,
+    preview =       function(i) return {x = 0, y = 1.525, z = -0.56} end,
     -- relative to map
     dispossessed =  function(i) return {x = -117.15, y = 0.55, z = 29.15} end,
     relicStack =    function(i) return {x = -19.7, y = 0.55,  z = -9.9} end,
@@ -79,6 +80,7 @@ rot = {
     dispossessed =  {x = 0,   y = 180,  z = 180},
     denizen =       {x = 0, y = 180,   z = 0},
     portal =        {x = 0,   y = 180, z = 0},
+    preview =       {x = 90,   y = 180, z = 0},
     relic =         {x = 180, y = 0,   z = 0},
     relicStack =    {x = 180, y = 0,   z = 0},
     site =          {x = 0,   y = 180, z = 0},
