@@ -1012,7 +1012,6 @@ end
 -- end
 
 function peek(obj, player_clicker_color, alt_click)
-    print(player_clicker_color)
     showAtlasBoxPreview(player_clicker_color)
 end
 
