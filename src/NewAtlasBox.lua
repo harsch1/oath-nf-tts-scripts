@@ -531,6 +531,7 @@ end
 function retrieve(player_color, object_position, object, retrieveIndex, continual)
     retrieveIndex = retrieveIndex == nil and 0 or retrieveIndex
     local hasRetrieved = false
+    local retrieveBack = retrieveIndex == (#objects.atlasBox.getObjects())-1
     function retrieveAtFirstEmptySlot(foundObjects, slotNumber)
         if not hasRetrieved or continual then
             for _, obj in ipairs(foundObjects) do
@@ -569,7 +570,7 @@ function retrieve(player_color, object_position, object, retrieveIndex, continua
             if isDebug() then
                 printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ")) or ("Summoning Empty Site"))
             end
-            if isOldSite then
+            if retrieveBack then
                 refreshRevisitPreview()
             end
             return
