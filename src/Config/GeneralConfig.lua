@@ -1,10 +1,12 @@
 -- GUIDs for needed items. IF SOMETHING IS BROKEN LIKELY THESE ARE NO LONGER CORRECT
 GUIDs = {
     atlasBox = "f8bd3c",
+    banditBag = "0748d5",
+    newAtlasBox = "8f8e1a",
     -- edifices = "1662f7",
     relicBag = "c46336",
     -- shadowBag = "1ce44a",
-    siteBag = "12dafe",
+    siteBag = "da02a4",
     table = "4ee1f2",
     map = "d5dacf",
     dispossessedBag = "e52b07",
@@ -15,6 +17,15 @@ GUIDs = {
         Hearth = "31eab2",
         Nomad = "6deb3d",
         Order = "275175"
+    },
+    edificeDeck = "1218b6",
+    edificeDecks = {
+        Arcane = "1218b6",
+        Beast = "9ff2ff",
+        Discord = "9f8caf",
+        Hearth = "f96c21",
+        Nomad = "0a6c96",
+        Order = "33d062"
     },
     foundations = {
       deckSetup = '373c0c'
@@ -32,7 +43,9 @@ tags = {
     protected = "Protected",
     debug = "Debug",
     ancient = "Ancient",
-    card = "Card"
+    card = "Card",
+    slow = "Slow",
+    bandit = "Bandit",
 }
 
 -- Name strings to use for Atlas Slots depending on their states
@@ -51,8 +64,9 @@ portal = {
 -- Positions
 pos = {
     -- relative to site
+    bandit  =       function(i) return {x = -1.5+1.5*i, y = 3, z = 2} end,
     denizen =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
-    relic  =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
+    relic   =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
     -- relative to atlas portal/box
     portal =        function(i) return {x = 0, y = 0.10, z = 0} end,
     preview =       function(i) return {x = 0, y = 1.525, z = -0.56} end,
@@ -61,14 +75,14 @@ pos = {
     relicStack =    function(i) return {x = -19.7, y = 0.55,  z = -9.9} end,
     site =          function(i)
                         local sitePositions = {
-                            { x = -26.55, y = 0.21, z =  5.00 },
-                            { x = -26.55, y = 0.21, z = -0.75 },
-                            { x = -06.10, y = 0.21, z =  5.00 },
-                            { x = -06.10, y = 0.21, z = -0.75 },
-                            { x = -06.10, y = 0.21, z = -6.50 },
-                            { x =  14.85, y = 0.21, z =  5.00 },
-                            { x =  14.85, y = 0.21, z = -0.75 },
-                            { x =  14.85, y = 0.21, z = -6.50 }
+                            { x = -26.55, y = 0.03, z =  5.00 },
+                            { x = -26.55, y = 0.03, z = -0.75 },
+                            { x = -06.10, y = 0.03, z =  5.00 },
+                            { x = -06.10, y = 0.03, z = -0.75 },
+                            { x = -06.10, y = 0.03, z = -6.50 },
+                            { x =  14.85, y = 0.03, z =  5.00 },
+                            { x =  14.85, y = 0.03, z = -0.75 },
+                            { x =  14.85, y = 0.03, z = -6.50 }
                         }
                         return sitePositions[i]
                     end,
