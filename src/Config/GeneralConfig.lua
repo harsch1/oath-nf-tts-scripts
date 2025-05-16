@@ -6,7 +6,7 @@ GUIDs = {
     -- edifices = "1662f7",
     relicBag = "c46336",
     -- shadowBag = "1ce44a",
-    siteBag = "da02a4",
+    siteBag = "12dafe",
     table = "4ee1f2",
     map = "d5dacf",
     dispossessedBag = "e52b07",
@@ -27,10 +27,9 @@ GUIDs = {
         Nomad = "0a6c96",
         Order = "33d062"
     },
-    foundations = {
-      deckSetup = '373c0c'
-    },
-    scriptingTrigger = '84ebee'
+    exploringFoundation = 'a19f9a',
+    scriptingTrigger = '84ebee',
+
 }
 
 -- Tags to identify items

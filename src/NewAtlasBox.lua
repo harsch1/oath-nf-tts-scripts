@@ -4,6 +4,7 @@ require("src/Utils/ColorUtils")
 require("src/Config/GeneralConfig")
 require("src/Config/AtlasBoxButtons")
 require("src/Utils/HelperFunctions")
+require("src/XmlHelper")
 
 -- Objects for needed game objects.
 local objects = {
@@ -15,6 +16,7 @@ local objects = {
     siteBag = nil,
     table = nil,
     map = nil,
+    exploringFoundation = nil
 }
 
 local SITE_PREVIEW = "SITE PREVIEW"
@@ -24,6 +26,7 @@ local selfTransform = nil
 local sitePreview = {}
 local portalPosition = self.getPosition()
 local retrieveInCooldown = false
+
 
 -- ==============================
 -- INITIALIZATION
@@ -56,8 +59,8 @@ function onLoad()
         self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
         self.addContextMenuItem("REVISIT an old Site", retrieveBack)
         self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
-        self.addContextMenuItem("Peek at contents", peek)
-        self.addContextMenuItem("Search contents (requires Debug)", search)
+        self.addContextMenuItem("Search (Debug)", search)
+        objects.exploringFoundation.createButton(buttons.foundationExplore)
         refreshRevisitPreview()
     -- If the chronicle is not created we need to spawn setup buttons
     elseif not chronicleExists then
@@ -88,7 +91,8 @@ function setupObjects(isChronicleCreated)
         {objectName = "atlasBox", GUID = GUIDs.atlasBox, printableName = "Atlas Box Bag"},
         {objectName = "atlasBoxModel", GUID = GUIDs.newAtlasBox, printableName = "Atlas Box Model"},
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"},
-        {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"}
+        {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"},
+        {objectName = "exploringFoundation", GUID = GUIDs.exploringFoundation, printableName = "Foundation 9 Card"},
     }
     local setupTable = {
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
@@ -202,7 +206,7 @@ function chronicleSetup(obj, color, alt_click)
             printToAll("creating the world...")
             for i = 1,  #objects.siteBag.getObjects() do
                 local site = getRandomSite()
-                for i = 0, 1*getSpeedScale() do
+                for i = 0, 2*getSpeedScale() do
                     coroutine.yield(0)
                 end
                 for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
@@ -228,6 +232,9 @@ function chronicleSetup(obj, color, alt_click)
                         ).position)
                         site.addAttachment(edifice)
                     end
+                end
+                if getSiteScriptTag(site, "Enduring") == 1 then
+                    site.addTag(tags.ancient)
                 end
                 for i = 0, 1*getSpeedScale() do
                     coroutine.yield(0)
@@ -260,8 +267,8 @@ function chronicleSetup(obj, color, alt_click)
             self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
             self.addContextMenuItem("REVISIT an old Site", retrieveBack)
             self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
-            self.addContextMenuItem("Peek at contents", peek)
-            self.addContextMenuItem("Search contents (requires Debug)", search)
+            self.addContextMenuItem("Search (Debug)", search)
+            objects.exploringFoundation.createButton(buttons.foundationExplore)
             refreshRevisitPreview()
             createDispossessed()
             printToAll("WORLD DECK SETUP COMPLETE.")
@@ -319,9 +326,9 @@ function createRelicDeck()
         else
             relicDeck.putObject(relic)
         end
-        for i = 0, 1*getSpeedScale() do
-            coroutine.yield(0)
-        end
+        -- for i = 0, 1*getSpeedScale() do
+        --     coroutine.yield(0)
+        -- end
     end
     objects.relicDeck = relicDeck
 end
@@ -356,7 +363,7 @@ end
 -- Get Elements for creating Chronicle
 function getRandomSite()
     local site = getRandomObjectFromContainer(objects.siteBag, false)
-    site.setRotation({x=0,y=180,z=0})
+    site.setRotation({x=0,y=180,z=180})
     return site
 end
 
@@ -402,8 +409,10 @@ function ruinSites()
             for _, obj in ipairs(hitObjects) do
                 if (obj.hasTag(tags.site) or obj.hasTag(tags.relic)) then
                     table.insert(toStoreSlot, obj)
+                    obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=roundToNearest180(obj.getRotation().z)})
                 elseif (obj.hasTag(tags.edifice) and (obj.getRotation().z < 10 or obj.getRotation().z > 350)) then
                     table.insert(toStoreSlot, obj)
+                    obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=roundToNearest180(obj.getRotation().z)})
                 elseif (obj.hasTag(tags.card) and isAncient) then
                     table.insert(toStoreSlot, obj)
                 elseif (obj.hasTag(tags.bandit)) then
@@ -519,11 +528,11 @@ end
 -- ATLAS BOX RETRIEVAL
 -- ==============================
 
-function retrieve(player_color, object_position, object, isOldSite, retrieveRest)
-    isOldSite = isOldSite == nil and false or isOldSite
+function retrieve(player_color, object_position, object, retrieveIndex, continual)
+    retrieveIndex = retrieveIndex == nil and 0 or retrieveIndex
     local hasRetrieved = false
     function retrieveAtFirstEmptySlot(foundObjects, slotNumber)
-        if not hasRetrieved or retrieveRest then
+        if not hasRetrieved or continual then
             for _, obj in ipairs(foundObjects) do
                 if obj.hasTag(tags.site) then
                     if slotNumber == 8 then
@@ -538,10 +547,7 @@ function retrieve(player_color, object_position, object, isOldSite, retrieveRest
                 {tag = tags.edifice, data = {count = 0, printName = "Edifice(s)"}},
                 {tag = tags.card, data = {count = 0, printName = "Card(s)"}},
             }
-            local bagIndex = 0
-            if isOldSite then
-                bagIndex = (#objects.atlasBox.getObjects())-1
-            end
+            local bagIndex = retrieveIndex
             -- Spawn the bags contents
             local siteWithAttachments = getFromAtlasBox(bagIndex)
             for _, obj in ipairs(siteWithAttachments.getAttachments()) do
@@ -582,7 +588,7 @@ function retrieve(player_color, object_position, object, isOldSite, retrieveRest
 end
 
 function retrieveBack(player_color, object_position, object)
-    retrieve(player_color, object_position, object, true, false)
+    retrieve(player_color, object_position, object, (#objects.atlasBox.getObjects())-1, false)
 end
 
 function retrieveRest(player_color, object_position, object)
@@ -615,9 +621,10 @@ function refreshRevisitPreview()
                 denizenClone = obj.clone()
                 lastSite.addAttachment(obj)
                 denizenClone.setLock(true)
+                local denizen_z = roundToNearest180(denizenClone.getRotation().z)
                 denizenClone.setRotation(vectorSum(
                     previewTransform.rotation,
-                    {x=denizenClone.getRotation().x, y=denizenClone.getRotation().y+180, z=denizenClone.getRotation().z}
+                    {x=0, y=180+180, z=denizen_z}
                 ))
                 denizenClone.setScale(vector(1.5, 0.001, 1.5))
                 denizenClone.setPosition(vectorSum(previewTransform.position,vector(2.15 - 1*denizenCount, -0.75-.1*denizenCount, -0.02 - 0.001*denizenCount)))
@@ -653,8 +660,7 @@ function refreshRevisitPreview()
         siteClone.addContextMenuItem("EXPLORE new Sites", retrieveRest)
         siteClone.addContextMenuItem("REVISIT an old Site", retrieveBack)
         siteClone.addContextMenuItem("Retrieve lost Relics", spawnRelics)
-        siteClone.addContextMenuItem("Peek at contents", peek)
-        siteClone.addContextMenuItem("Search contents (requires Debug)", search)
+        siteClone.addContextMenuItem("Search (Debug)", search)
         table.insert(sitePreview, siteClone)
         return 1
     end
@@ -713,6 +719,17 @@ end
 -- UTILITY
 -- ==============================
 
+function roundToNearest180(z)
+    -- Round z rotation to nearest 0, 180, or 360
+    local nearest = 0
+    if math.abs(z - 180) < math.abs(z - 0) and math.abs(z - 180) < math.abs(z - 360) then
+        nearest = 180
+    elseif math.abs(z - 360) < math.abs(z - 0) then
+        nearest = 360
+    end
+    return nearest
+end
+
 -- Get object from Atlas Box at a given index
 function getFromAtlasBox(i)
     local isUnlocked = objects.atlasBox.hasTag(tags.unlocked)
@@ -720,7 +737,7 @@ function getFromAtlasBox(i)
     local toSpawn = objects.atlasBox.takeObject({
         index = i,
         position = vectorSum(objects.atlasBoxModel.getPosition(),vector(0,0,-5)),
-        rotation = objects.atlasBoxModel.getRotation()
+        rotation = vectorSum(objects.atlasBoxModel.getRotation(),vector(180,0,0))
     })
     if not isUnlocked
         then objects.atlasBox.removeTag(tags.unlocked)
@@ -732,6 +749,7 @@ end
 function putSiteIntoAtlasBox(site)
     local isUnlocked = objects.atlasBox.hasTag(tags.unlocked)
     objects.atlasBox.addTag(tags.unlocked)
+    site.setRotation({x=0,y=180,z=180})
     objects.atlasBox.putObject(site)
     if not isUnlocked then
         objects.atlasBox.removeTag(tags.unlocked)
@@ -746,6 +764,10 @@ function putIntoAtlasBox(objs, shouldRefreshPreview)
     for _, obj in ipairs(objs) do
         if obj.hasTag(tags.site) then
             site = obj
+            site.setRotation({x=0,y=180,z=180})
+            for i = 0, 3*getSpeedScale() do
+                coroutine.yield(0)
+            end
             break
         end
     end
@@ -772,14 +794,39 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
     function spawnSiteAndAttachmentsAtTransformCoroutine() 
         local relicNumber, denizenNumber, denizenCount = 0, 0, 0
         local siteAttachments = site.removeAttachments()
-        site.setPositionSmooth(baseTransform.position)
-        site.setRotation(baseTransform.rotation)
+        site.setPositionSmooth(baseTransform.position, false)
+        site.setRotationSmooth(baseTransform.rotation, false)
         site.addContextMenuItem("Preserve Site", markCard)
         site.addContextMenuItem("Allow Site to Ruin", unMarkCard)
         if(duringSetup) then
             site.setLock(true)
         end
         -- Take out edifices and relics
+           -- Count edifices first but take relics out first since they can collide
+        for _, obj in ipairs(siteAttachments) do
+            local transform = nil
+            if obj.hasTag(tags.edifice) or obj.hasTag(tags.card) then
+                denizenNumber = denizenNumber+1
+            end
+        end
+
+        for _, obj in ipairs(siteAttachments) do
+            local transform = nil
+            if obj.hasTag(tags.relic) then
+                transform = getTransformStruct("relic", denizenNumber, baseTransform)
+                denizenNumber = denizenNumber + 1
+                relicNumber = relicNumber + 1
+            end
+            if transform then
+                for i = 0, 1*getSpeedScale() do
+                    coroutine.yield(0)
+                end
+                obj.setRotationSmooth(rot.relic, false)
+                obj.setPositionSmooth(transform.position, false)
+                obj.setScale(vector(0.96, 1.0, 0.96)) --Sometimes attaching skews the scale
+            end
+        end
+        denizenNumber = 0
         for _, obj in ipairs(siteAttachments) do
             local transform = nil
             if obj.hasTag(tags.edifice) or obj.hasTag(tags.card) then
@@ -790,27 +837,12 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 for i = 0, 1*getSpeedScale() do
                     coroutine.yield(0)
                 end
-                obj.setPositionSmooth(transform.position)
-                obj.setRotation({x= obj.getRotation().x, y= transform.rotation.y, z= obj.getRotation().z})
+                obj.setPositionSmooth(transform.position, false)
+                obj.setRotationSmooth({x=roundToNearest180(obj.getRotation().x), y=roundToNearest180(transform.rotation.y), z=roundToNearest180(obj.getRotation().z)}, false)
                 obj.setScale(vector(1.65, 1.0, 1.65)) --Sometimes attaching skews the scale
             end
         end
-        for _, obj in ipairs(siteAttachments) do
-            local transform = nil
-            if obj.hasTag(tags.relic) then
-                transform = getTransformStruct("relic", denizenNumber, baseTransform)
-                denizenNumber = denizenNumber+1
-                relicNumber = relicNumber + 1
-            end
-            if transform then
-                for i = 0, 2*getSpeedScale() do
-                    coroutine.yield(0)
-                end
-                obj.setRotation(rot.relic)
-                obj.setPositionSmooth(transform.position)
-                obj.setScale(vector(0.96, 1.0, 0.96)) --Sometimes attaching skews the scale
-            end
-        end
+        denizenNumber = denizenNumber + relicNumber
         local relicSlots = getSiteScriptTag(site, "RelicSlots")
         local banditSlots = 3-relicSlots
         -- Add any new relics
@@ -825,8 +857,8 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                     for i = 0, 1*getSpeedScale() do
                         coroutine.yield(0)
                     end
-                    newRelic.setPositionSmooth(transform.position)
-                    newRelic.setRotation(rot.relic)
+                    newRelic.setPositionSmooth(transform.position, false)
+                    newRelic.setRotationSmooth(rot.relic)
                     denizenNumber = denizenNumber + 1  
                 end
             end
@@ -918,7 +950,7 @@ function getSpeedScale()
     if (getSpeedDisplayButton() ~= nil) then
         return 30/getSpeedDisplayButton().label
     end
-    return 6
+    return 3
 end
 
 function getSpeedDisplayButton()
@@ -944,7 +976,7 @@ end
 function speedDown(obj, color, alt_click)
     local speedDisplayButton = getSpeedDisplayButton()
     if speedDisplayButton ~= nil then
-        local newSpeed = math.max(1, speedDisplayButton.label - 1)
+        local newSpeed = math.max(2, speedDisplayButton.label - 1)
         self.editButton({
             index = speedDisplayButton.index,
             label = newSpeed
@@ -979,8 +1011,9 @@ end
 --     end
 -- end
 
-function peek(player_color, object_position, object)
-    showAtlasBoxPreview(player_color)
+function peek(obj, player_clicker_color, alt_click)
+    print(player_clicker_color)
+    showAtlasBoxPreview(player_clicker_color)
 end
 
 
@@ -995,10 +1028,10 @@ function showAtlasBoxPreview(player_color)
         -- Pull the last 2 items
         for i = 1, numSites do
             local siteWithAttachments = getFromAtlasBox(0)
-            for i = 0, 5*getSpeedScale() do
+            for j = 0, 2*getSpeedScale() do
                 coroutine.yield(0)
             end
-            if i == 1  or i == 2 then
+            if i == 1 or i == 2 then
                 local relicCount = 0
                 local edificeCount = 0
                 for _, obj in ipairs(siteWithAttachments.getAttachments()) do
@@ -1008,7 +1041,7 @@ function showAtlasBoxPreview(player_color)
                         edificeCount = edificeCount + 1
                     end
                 end
-                table.insert(imageAndAttachments, {image = getImageFromObject(siteWithAttachments), relicCount = relicCount, edificeCount = edificeCount})
+                table.insert(imageAndAttachments, {image = getImageFromObject(siteWithAttachments), relicCount = relicCount, edificeCount = edificeCount, object = siteWithAttachments})
             end
             putSiteIntoAtlasBox(siteWithAttachments)
         end
@@ -1017,7 +1050,6 @@ function showAtlasBoxPreview(player_color)
         return 1
     end
     startLuaCoroutine(self, "showAtlasBoxPreviewCoroutine")
-    
 end
 
 function getImageFromObject(obj)
@@ -1036,4 +1068,3 @@ function search(player_color)
         objects.atlasBox.Container.search(player_color)
     end 
 end
-
