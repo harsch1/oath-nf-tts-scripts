@@ -16,7 +16,13 @@ local objects = {
     siteBag = nil,
     table = nil,
     map = nil,
-    exploringFoundation = nil
+    exploringFoundation = nil,
+    arcaneEdificeDeck = nil,
+    beastEdificeDeck = nil,
+    discordEdificeDeck = nil,
+    hearthEdificeDeck = nil,
+    nomadEdificeDeck = nil,
+    orderEdificeDeck = nil,
 }
 
 local SITE_PREVIEW = "SITE PREVIEW"
@@ -33,7 +39,9 @@ local retrieveInCooldown = false
 -- ==============================
 
 function onLoad() 
+    log('mirror_game ON')
     -- Create all needed tags by adding them to this object and then removing them
+    debugLog("Adding tags to game")
     local tagsToAdd = {tags.site, tags.relic, tags.edifice, tags.unlocked, tags.protected, tags.ancient, tags.card, tags.slow}
     for _, tag in ipairs(tagsToAdd) do
         self.addTag(tag)
@@ -44,23 +52,30 @@ function onLoad()
         self.addTag(tags.debug)
         self.removeTag(tags.debug)
     end
+    debugLog("Tags added")
 
     local chronicleExists = self.hasTag(tags.chronicleCreated)
 
-
+    debugLog("Adding Speed buttons")
     self.createButton(buttons.speedLabel)
     self.createButton(buttons.speedDisplay)
     self.createButton(buttons.speedUp)
     self.createButton(buttons.speedDown)
+    debugLog("Speed buttons added")
+    
     -- If the chronicle is already created we can skip setup
     if chronicleExists then
         setupObjects(true)
+
+        debugLog("Adding Atlas Box context menu items and Foundation 9 button")
         self.addContextMenuItem("RUIN and unify Sites", ruinSites)
         self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
         self.addContextMenuItem("REVISIT an old Site", retrieveBack)
         self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         self.addContextMenuItem("Search (Debug)", search)
         objects.exploringFoundation.createButton(buttons.foundationExplore)
+        debugLog("Atlas Box context menu items added and Foundation 9 button")
+
         refreshRevisitPreview()
     -- If the chronicle is not created we need to spawn setup buttons
     elseif not chronicleExists then
@@ -71,6 +86,8 @@ function onLoad()
             self.createButton(buttons.retry)
         end
     end
+
+    debugLog("Setting up internal Atlas Box Container")
     -- objects.atlasBox.setLock(true)
     objects.atlasBox.interactable = false
     objects.atlasBox.setPosition(vectorSum(objects.atlasBoxModel.getPosition(), {x=0, y=0, z=2}))
@@ -81,6 +98,7 @@ function onLoad()
         ["break_force"]  = 10000000.0,
         ["break_torgue"] = 10000000.0,
     })
+    debugLog("Setting up internal Atlas Box Container complete")
 
 end
 
@@ -93,6 +111,12 @@ function setupObjects(isChronicleCreated)
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"},
         {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"},
         {objectName = "exploringFoundation", GUID = GUIDs.exploringFoundation, printableName = "Foundation 9 Card"},
+        {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
+        {objectName = "beastEdificeDeck", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
+        {objectName = "discordEdificeDeck", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
+        {objectName = "hearthEdificeDeck", GUID = GUIDs.edificeDecks.Hearth, printableName = "Hearth Edifice Deck"},
+        {objectName = "nomadEdificeDeck", GUID = GUIDs.edificeDecks.Nomad, printableName = "Nomad Edifice Deck"},
+        {objectName = "orderEdificeDeck", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
     }
     local setupTable = {
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
@@ -100,6 +124,7 @@ function setupObjects(isChronicleCreated)
     }
     local foundAll = true
     
+    debugLog("Detecting object group 1")
     for _, loadTable in ipairs(loadTable) do
         objects[loadTable.objectName] = getObjectFromGUID(loadTable.GUID)
         if objects[loadTable.objectName] == nil then
@@ -107,7 +132,10 @@ function setupObjects(isChronicleCreated)
             foundAll = false
         end
     end
+    debugLog("Detecting  object group 1 complete")
+
     if not isChronicleCreated then
+        debugLog("Detecting setup objects")
         for _, setupItem in ipairs(setupTable) do
             objects[setupItem.objectName] = getObjectFromGUID(setupItem.GUID)
             if objects[setupItem.objectName] == nil then
@@ -115,7 +143,9 @@ function setupObjects(isChronicleCreated)
                 foundAll = false
             end
         end
+        debugLog("Detecting setup objects complete")
     else
+        debugLog("Detecting site objects and adding context menu items")
         for _, obj in ipairs(getAllObjects()) do
             if obj.getDescription() == SITE_PREVIEW then
                 table.insert(sitePreview, obj)
@@ -128,17 +158,11 @@ function setupObjects(isChronicleCreated)
                 objects.relicDeck = obj
             end
         end
-
+        debugLog("Detecting site objects and adding context menu items complete")
     end
     selfTransform = {position = self.getPosition(), rotation = self.getRotation()}
     mapTransform = {position = objects.map.getPosition(), rotation = objects.map.getRotation()}
     return foundAll
-end
-
--- Check that the Atlas Box can be found
-function setupAtlasBox()
-    -- objects.atlasBox = self
-    return true
 end
 
 -- Remove all buttons
@@ -149,6 +173,7 @@ end
 
 -- Tag all items in bags
 function tagAllItems()
+    debugLog("Tagging all relics")
     local bagTags = { 
         {bag = objects.relicBag,    tag = tags.relic},
     }
@@ -158,6 +183,7 @@ function tagAllItems()
             bag.putObject(addTagAndReturn(bag.takeObject({guid = item.guid}), tag))
         end
     end
+    debugLog("Tagging all relics complete")
 end
 
 -- ==============================
@@ -176,6 +202,7 @@ function chronicleSetup(obj, color, alt_click)
             -- Tag all cards
             printToAll("organizing cards...")
             local decksDone = 0
+            debugLog("Tagging all archive cards")
             for _, deck in pairs(getArchiveDecks()) do
                 function tagAllCardsInDeck(_deck)
                     local deckSize = #deck.getObjects()
@@ -195,6 +222,7 @@ function chronicleSetup(obj, color, alt_click)
                 end
                 startLuaCoroutine(self, "tagAllCardsInDeck")
             end
+            debugLog("Tagging all archive cards complete")
             while decksDone < 6 do
                 coroutine.yield(0)
             end
@@ -204,6 +232,7 @@ function chronicleSetup(obj, color, alt_click)
             end
             -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
             printToAll("creating the world...")
+            debugLog("Attaching edifices and enduring tag to homeland sites")
             for i = 1,  #objects.siteBag.getObjects() do
                 local site = getRandomSite()
                 for i = 0, 2*getSpeedScale() do
@@ -213,17 +242,17 @@ function chronicleSetup(obj, color, alt_click)
                     if getSiteScriptTag(site, tag) == 1 then
                         local edifice = nil
                         if tag == "ArcaneHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Arcane), false)
+                            edifice = getRandomObjectFromContainer(objects.arcaneEdificeDeck, false)
                         elseif tag == "BeastHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Beast), false)
+                            edifice = getRandomObjectFromContainer(objects.beastEdificeDeck, false)
                         elseif tag == "DiscordHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Discord), false)
+                            edifice = getRandomObjectFromContainer(objects.discordEdificeDeck, false)
                         elseif tag == "HearthHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Hearth), false)
+                            edifice = getRandomObjectFromContainer(objects.hearthEdificeDeck, false)
                         elseif tag == "NomadHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Nomad), false)
+                            edifice = getRandomObjectFromContainer(objects.nomadEdificeDeck, false)
                         elseif tag == "OrderHomeland" then
-                            edifice = getRandomObjectFromContainer(getObjectFromGUID(GUIDs.edificeDecks.Order), false)
+                            edifice = getRandomObjectFromContainer(objects.orderEdificeDeck, false)
                         end
                         edifice.setPosition(
                             getTransformStruct("denizen",
@@ -233,6 +262,8 @@ function chronicleSetup(obj, color, alt_click)
                         site.addAttachment(edifice)
                     end
                 end
+
+                
                 if getSiteScriptTag(site, "Enduring") == 1 then
                     site.addTag(tags.ancient)
                 end
@@ -241,6 +272,7 @@ function chronicleSetup(obj, color, alt_click)
                 end
                 putSiteIntoAtlasBox(site)
             end
+            debugLog("Attaching edifices and enduring tag to homeland sites complete")
 
             createRelicDeck()
             destroyObject(objects.relicBag)
@@ -248,6 +280,7 @@ function chronicleSetup(obj, color, alt_click)
             unifyEdificeDecks()
             
             -- Deal Starting Sites
+            debugLog("Dealing starting sites")
             for siteNumber = 1,8 do
                 local siteAndAttachments = getFromAtlasBox(0)
                 spawnSiteAndAttachmentsAtTransform(siteAndAttachments, getTransformStruct("site", siteNumber, mapTransform), true)
@@ -255,11 +288,12 @@ function chronicleSetup(obj, color, alt_click)
                     coroutine.yield(0)
                 end
             end
+            debugLog("Dealing starting sites complete. Destroying site bag")
             destroyObject(objects.siteBag)
             
             generateNewWorldDeck()
 
-            -- Clean up the bags and add the chronicle created tag
+            debugLog("Creating world deck complete. Adding context menu items")
             self.addTag(tags.chronicleCreated)
             removeButtons(buttons.setup)
             -- createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack, buttons.ruinSites,  buttons.unifySites)
@@ -269,6 +303,7 @@ function chronicleSetup(obj, color, alt_click)
             self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
             self.addContextMenuItem("Search (Debug)", search)
             objects.exploringFoundation.createButton(buttons.foundationExplore)
+            debugLog("Adding context menu items complete")
             refreshRevisitPreview()
             createDispossessed()
             printToAll("WORLD DECK SETUP COMPLETE.")
@@ -284,6 +319,8 @@ function generateNewWorldDeck()
     local firstCard = nil
     local worldDeck = nil
     -- add 9 cards from each suit
+
+    debugLog("Creating world deck with 9 cards of each suit")
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
         for i=1, 9 do
@@ -304,11 +341,13 @@ function generateNewWorldDeck()
             end
         end
     end
+    debugLog("Creating world deck complete")
 end
 
 function createRelicDeck()
     local firstRelic = nil
     local relicDeck = nil
+    debugLog("Creating relic deck")
     for _, item in ipairs(objects.relicBag.getObjects()) do
         local relic = objects.relicBag.takeObject()
         for i = 0, 1*getSpeedScale() do
@@ -330,6 +369,7 @@ function createRelicDeck()
         --     coroutine.yield(0)
         -- end
     end
+    debugLog("Creating relic deck complete")
     objects.relicDeck = relicDeck
 end
 
@@ -338,6 +378,7 @@ function createDispossessed()
     local firstCard = nil
     local dispossessed = nil
     -- add 2 cards from each suit
+    debugLog("Creating dispossessed deck with 2 cards of each suit")
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
         for i=1, 2 do
@@ -358,6 +399,7 @@ function createDispossessed()
             end
         end
     end
+    debugLog("Creating dispossessed deck complete")
 end
 
 -- Get Elements for creating Chronicle
@@ -381,19 +423,23 @@ function ruinSites()
         local i = #toStore
         -- Store the objects in the Atlas Box in the empty slot closest to the frontwa
         local foundEmptyBag = false
+        debugLog("Storing objects in Atlas Box")
         for i = 1, #toStore do
             putIntoAtlasBox(toStore[i])
             storedSites = storedSites + 1
         end
+        debugLog("Storing objects in Atlas Box complete")
         refreshRevisitPreview()
         unifySites()
         return 1
     end
+
     function getRuinableObjectsAtSite(hitObjects, index)
         local isProtected = false
         local isAncient = false
         local protectedSite
 
+        debugLog("Checking for ruinable objects at site " .. index)
         for _, obj in ipairs(hitObjects) do
             if obj.hasTag(tags.site) then
                 obj.setLock(false)
@@ -404,8 +450,10 @@ function ruinSites()
                 end
             end
         end
+        debugLog("Checking for ruinable objects at site " .. index .. " complete")
         if not isProtected then
             local toStoreSlot = {}
+            debugLog("Getting storable objects at site " .. index)
             for _, obj in ipairs(hitObjects) do
                 if (obj.hasTag(tags.site) or obj.hasTag(tags.relic)) then
                     table.insert(toStoreSlot, obj)
@@ -436,13 +484,14 @@ function ruinSites()
             if #toStoreSlot > 0 then
                 table.insert(toStore, toStoreSlot)
             end
+            debugLog("Getting storable objects at site " .. index .. " complete")
         end
         completedSites = completedSites + 1
 
         local waitCount = 0
         if index == 1 then
             while completedSites < 8 do
-                printToAll("Waiting for " .. waitCount)
+                debugLog("Waiting for " .. waitCount)
                 waitCount = waitCount + 1
             end
             startLuaCoroutine(self, "quickStoreCoroutine")
@@ -462,6 +511,7 @@ function unifySites()
                 if isDebug() and waitCount%20 == 0 then printToAll("Waiting for " .. waitCount/20 .. ", " .. currentSlot .. " " .. slot) end
                 waitCount = waitCount + 1
             end
+            debugLog("Getting storable objects at site " .. slot)
             local isEmpty = true
             for _, obj in ipairs(hitObjects) do
                 if not (obj.getGUID() == GUIDs.map) and
@@ -477,6 +527,8 @@ function unifySites()
             if isEmpty then
                 table.insert(emptySites, slot)
             elseif #emptySites > 0 then
+                
+                debugLog("Moving objects from site " .. slot .. " to site " .. emptySites[1])
                 local destinationSlot = table.remove(emptySites, 1)
                 local deltaPosition = vectorSum(
                     {
@@ -491,6 +543,7 @@ function unifySites()
                         obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false, true)
                     end
                 end
+                debugLog("Moving objects from site " .. slot .. " to site " .. emptySites[1] .. " complete")
                 for i = 0, 40*getSpeedScale() do
                     coroutine.yield(0)
                 end
@@ -508,6 +561,7 @@ function unifySites()
 end
 
 function unifyEdificeDecks()
+    debugLog("Unifying Edifice decks")
     local decks = getEdificeDecks()
     local firstDeck = decks.Arcane
     for _, deck in pairs(decks) do
@@ -521,7 +575,9 @@ function unifyEdificeDecks()
     for i = 0, 3*getSpeedScale() do
         coroutine.yield(0)
     end
+    firstDeck.setName("Edifice Deck")
     firstDeck.shuffle()
+    debugLog("Unifying Edifice decks complete")
 end
 
 -- ==============================
@@ -529,6 +585,7 @@ end
 -- ==============================
 
 function retrieve(player_color, object_position, object, retrieveIndex, continual)
+    debugLog("Retrieving site(s) from Atlas Box")
     retrieveIndex = retrieveIndex == nil and 0 or retrieveIndex
     local hasRetrieved = false
     local retrieveBack = retrieveIndex == (#objects.atlasBox.getObjects())-1
@@ -549,7 +606,7 @@ function retrieve(player_color, object_position, object, retrieveIndex, continua
                 {tag = tags.card, data = {count = 0, printName = "Card(s)"}},
             }
             local bagIndex = retrieveIndex
-            -- Spawn the bags contents
+            debugLog("Retrieving site " .. bagIndex)
             local siteWithAttachments = getFromAtlasBox(bagIndex)
             for _, obj in ipairs(siteWithAttachments.getAttachments()) do
                 for _, countAndTag in ipairs(countsAndTags) do
@@ -558,9 +615,9 @@ function retrieve(player_color, object_position, object, retrieveIndex, continua
                     end
                 end
             end
+            debugLog("Retrieving site " .. bagIndex .. " complete")
             spawnSiteAndAttachmentsAtTransform(siteWithAttachments, getTransformStruct("site", slotNumber, mapTransform), false)
             
-            -- Print message with what was summoned
             local messageParts = {}
             for _, countAndTag in ipairs(countsAndTags) do
                 if countAndTag.data.count > 0 then
@@ -598,18 +655,23 @@ end
 
 function refreshRevisitPreview()
     function refreshRevisitPreviewCoroutine()
+        debugLog("Refreshing Atlas Box site preview")
         local previewTransform = getTransformStruct("preview", 0, selfTransform)
         if sitePreview then 
+            debugLog("Destroy old site preview")
             for _, obj in ipairs(sitePreview) do
                 destroyObject(obj)
             end
             sitePreview = {}
+            debugLog("Destroy old site preview complete")
         end
+        debugLog("Loading new site to preview")
         local toStore = {}
         local lastSite = getFromAtlasBox(#objects.atlasBox.getObjects()-1)
         local denizenCount = 0
         local relicCount = 0
         local totalCardCount = 0
+        debugLog("Getting attachments for site " .. lastSite.getName())
         for _, obj in ipairs(lastSite.getAttachments()) do
             if dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.relic) or obj.hasTag(tags.card) then
                 totalCardCount = totalCardCount + 1
@@ -617,6 +679,7 @@ function refreshRevisitPreview()
         end
         local attachments = lastSite.removeAttachments()
         local siteClone = lastSite.clone()
+        debugLog("Creating attachment previews")
         for _, obj in ipairs(attachments) do
             if obj.hasTag(tags.edifice) or obj.hasTag(tags.card) then
                 denizenClone = obj.clone()
@@ -647,10 +710,15 @@ function refreshRevisitPreview()
                 table.insert(sitePreview, relicClone)
             end
         end
+        debugLog("Creating attachment previews complete")
         for i = 0, 5*getSpeedScale() do
             coroutine.yield(0)
         end
+        debugLog("Putting site into Atlas Box")
         putSiteIntoAtlasBox(lastSite)
+        debugLog("Putting site into Atlas Box complete")
+
+        debugLog("Final site preview adjustments")
         siteClone.setLock(true)
         siteClone.setRotation(previewTransform.rotation)
         siteClone.setScale(vector(1.8, 0.00001, 1.8))
@@ -663,6 +731,7 @@ function refreshRevisitPreview()
         siteClone.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         siteClone.addContextMenuItem("Search (Debug)", search)
         table.insert(sitePreview, siteClone)
+        debugLog("Final site preview adjustments complete")
         return 1
     end
     startLuaCoroutine(self, "refreshRevisitPreviewCoroutine")
@@ -940,6 +1009,12 @@ end
 
 function isDebug()
     return self.hasTag(tags.debug)
+end
+
+function debugLog(msg)
+    if isDebug() then
+        printToAll("--" .. msg)
+    end
 end
 
 function getSiteScriptTag(site, tag)
