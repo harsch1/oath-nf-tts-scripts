@@ -360,6 +360,47 @@ function GetWarbandBag()
   return nil
 end
 
+-- finds the player board and returns the oath player color, the faction color, and the faction
+function GetPlayerBoardState()
+  local function EvaluateCardData(cardData)
+    local deckID = math.floor(cardData.CardID / 100)
+    local cardIndex = cardData.CardID % 100
+    local deckInfo = cardData.CustomDeck[deckID]
+    -- look for player board assets
+    if string.find(deckInfo.FaceURL, "/player.jpg") then
+      -- this is an exile or a chancellor
+      local oathColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow", nil})[cardIndex + 1]
+      local factionColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow", "Purple"})[cardIndex + 1]
+      local oathFaction = ({"Exile", "Exile", "Exile", "Exile", "Exile", "Exile", "Exile", "Chancellor"})[cardIndex + 1]
+
+      if oathColor == nil then
+        -- look at the exile side state of the board to determine color
+        oathColor, _, _ = EvaluateCardData(cardData.States[1])
+      end
+
+      return oathColor, factionColor, oathFaction
+    elseif string.find(deckInfo.FaceURL, "/player2.jpg") then
+      -- this is a citizen
+      local oathColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow"})[cardIndex + 1]
+      local factionColor = "Purple"
+      local oathFaction = "Citizen"
+      return oathColor, factionColor, oathFaction
+    end
+  end
+
+  local hits = CastForObjects()
+  for _, info in ipairs(hits) do
+    if info.hit_object.type == 'Card' then
+      local cardData = info.hit_object.getData()
+      local oathColor, factionColor, oathFaction = EvaluateCardData(cardData)
+      if oathColor ~= nil and oathFaction ~= nil then
+        return oathColor, factionColor, oathFaction
+      end
+    end
+  end
+  return nil
+end
+
 function UpdatePlayerColor()
   local hands = {}
   local unusedColors = {
@@ -381,12 +422,19 @@ function UpdatePlayerColor()
     end
   end
 
-
-
-  local warbandBag = GetWarbandBag()
   local player = GetNearestPlayer()
-  if warbandBag and player then
-    local playerColor = GetBestFitTTSColor(warbandBag.getColorTint())
+  if player ~= nil then
+
+    -- find the player board
+    local oathColor, factionColor, oathFaction = GetPlayerBoardState()
+    local playerColor = TTSColorMap.OathColorToTTSColor[oathColor]
+    if oathFaction == 'Chancellor' then
+      -- attempt to give this player purple but only if it's not taken!
+      if player.color == 'Purple' or (Player['Purple'].seated == false) then
+        playerColor = 'Purple'
+      end
+    end
+
     if playerColor ~= player.color then
       if hands[player.color] ~= nil then
         if hands[playerColor] ~= nil then

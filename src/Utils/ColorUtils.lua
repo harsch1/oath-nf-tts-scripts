@@ -15,7 +15,7 @@ local oathColors = BidirectionalMap(
 })
 
 -- converts to and from oath player colors, and TTS color names
-local TTSColorMap = BidirectionalMap(
+TTSColorMap = BidirectionalMap(
   'OathColor', 'TTSColor',
   {
   ['Red'] = 'Red',
