@@ -82,18 +82,5 @@ buttons = {
         font_size      = 200,
         color          = hexToColor("#999999"),
         font_color     = {1, 1, 1, 1},
-    },
-    foundationExplore = {
-        click_function = "peek",
-        function_owner = self,
-        label          = "Explore!",
-        position       = {0.0, -0.5, 1.575},
-        scale          = {0.25, 1, 0.25},
-        rotation       = {0, 0, 180},
-        width          = 4100,
-        height         = 800,
-        font_size      = 600,
-        color          = hexToColor("#c86b4a"),
-        font_color     = {0, 0, 0, 1},
-    },
+    }
 }

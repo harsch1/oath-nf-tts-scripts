@@ -27,7 +27,6 @@ GUIDs = {
         Nomad = "0a6c96",
         Order = "33d062"
     },
-    exploringFoundation = 'a19f9a',
     scriptingTrigger = '84ebee',
 
 }

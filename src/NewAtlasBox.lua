@@ -16,7 +16,6 @@ local objects = {
     siteBag = nil,
     table = nil,
     map = nil,
-    exploringFoundation = nil,
     arcaneEdificeDeck = nil,
     beastEdificeDeck = nil,
     discordEdificeDeck = nil,
@@ -71,9 +70,9 @@ function onLoad()
         self.addContextMenuItem("RUIN and unify Sites", ruinSites)
         self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
         self.addContextMenuItem("REVISIT an old Site", retrieveBack)
+        self.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
         self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         self.addContextMenuItem("Search (Debug)", search)
-        objects.exploringFoundation.createButton(buttons.foundationExplore)
         debugLog("Atlas Box context menu items added and Foundation 9 button")
 
         refreshRevisitPreview()
@@ -110,7 +109,6 @@ function setupObjects(isChronicleCreated)
         {objectName = "atlasBoxModel", GUID = GUIDs.newAtlasBox, printableName = "Atlas Box Model"},
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"},
         {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"},
-        {objectName = "exploringFoundation", GUID = GUIDs.exploringFoundation, printableName = "Foundation 9 Card"},
         {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
         {objectName = "beastEdificeDeck", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
         {objectName = "discordEdificeDeck", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
@@ -300,9 +298,9 @@ function chronicleSetup(obj, color, alt_click)
             self.addContextMenuItem("RUIN and unify Sites", ruinSites)
             self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
             self.addContextMenuItem("REVISIT an old Site", retrieveBack)
+            self.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
             self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
             self.addContextMenuItem("Search (Debug)", search)
-            objects.exploringFoundation.createButton(buttons.foundationExplore)
             debugLog("Adding context menu items complete")
             refreshRevisitPreview()
             createDispossessed()
@@ -341,6 +339,7 @@ function generateNewWorldDeck()
             end
         end
     end
+    worldDeck.shuffle()
     debugLog("Creating world deck complete")
 end
 
@@ -470,8 +469,10 @@ function ruinSites()
                        not (obj.getGUID() == GUIDs.scriptingTrigger) and
                        not (obj.memo == "trigger") then
                         if  obj.hasTag(tags.edifice) then
-                            getObjectFromGUID(GUIDs.edificeDeck).putObject(obj)
-                            getObjectFromGUID(GUIDs.edificeDeck).shuffle()
+                            if not (nil == getEdificeDeck()) then
+                                getEdificeDeck().putObject(obj)
+                                getEdificeDeck().shuffle()
+                            end
                         end
                     local randomOffset = {
                         x = (math.random() - 0.5) * 15,
@@ -584,9 +585,9 @@ end
 -- ATLAS BOX RETRIEVAL
 -- ==============================
 
-function retrieve(player_color, object_position, object, retrieveIndex, continual)
+function retrieve(player_color, object_position, object, retrieveIndexOrFalse, continual)
     debugLog("Retrieving site(s) from Atlas Box")
-    retrieveIndex = retrieveIndex == nil and 0 or retrieveIndex
+    local retrieveIndex = (retrieveIndexOrFalse == nil) and 0 or retrieveIndexOrFalse
     local hasRetrieved = false
     local retrieveBack = retrieveIndex == (#objects.atlasBox.getObjects())-1
     function retrieveAtFirstEmptySlot(foundObjects, slotNumber)
@@ -636,7 +637,7 @@ function retrieve(player_color, object_position, object, retrieveIndex, continua
     if retrieveInCooldown then
         printToAll("Wait a sec...")
     end
-    if setupAtlasBox() and not retrieveInCooldown then
+    if not retrieveInCooldown then
         retrieveInCooldown = true
         getObjectsAtSites(retrieveAtFirstEmptySlot, true)
         Wait.time(function()
@@ -650,7 +651,11 @@ function retrieveBack(player_color, object_position, object)
 end
 
 function retrieveRest(player_color, object_position, object)
-    retrieve(player_color, object_position, object, false, true)
+    retrieve(player_color, object_position, object, 0, true)
+end
+
+function retrieveOnce(player_color, object_position, object)
+    retrieve(player_color, object_position, object, 0, false)
 end
 
 function refreshRevisitPreview()
@@ -728,6 +733,7 @@ function refreshRevisitPreview()
         siteClone.addContextMenuItem("RUIN and unify Sites", ruinSites)
         siteClone.addContextMenuItem("EXPLORE new Sites", retrieveRest)
         siteClone.addContextMenuItem("REVISIT an old Site", retrieveBack)
+        siteClone.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
         siteClone.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         siteClone.addContextMenuItem("Search (Debug)", search)
         table.insert(sitePreview, siteClone)
@@ -744,20 +750,24 @@ end
 
 -- Try to get 10 relics from the Atlas Box 
 function spawnRelics()
+    debugLog("Spawning relics from Atlas Box")
     function spawnRelicsCoroutine()
         for i = 1, #objects.atlasBox.getObjects() do
-        local relicCount = 0    
+            local relicCount = 0    
             local siteWithAttachments = getFromAtlasBox(0)
             for i = 0, 1*getSpeedScale() do
                 coroutine.yield(0)
             end
             if relicCount < 10 then
                 for _, item in ipairs(siteWithAttachments.getAttachments()) do
+                    debugLog("Checking site " .. siteWithAttachments.getName() .. " for relics")
                     local foundRelic = false
                     if relicCount < 10 and dataTableContains(item.tags, tags.relic) then
+                        debugLog("Found relic at site")
                         foundRelic = true
                     end
                     if foundRelic then
+                        debugLog("Detaching relic from site " .. siteWithAttachments.getName())
                         local attachments = siteWithAttachments.removeAttachments()
                         local transform = getTransformStruct("relicStack", 0, mapTransform)
                         for _, obj in ipairs(attachments) do
@@ -770,6 +780,7 @@ function spawnRelics()
                                 siteWithAttachments.addAttachment(obj)
                             end
                         end
+                        debugLog("Detaching relic from site " .. siteWithAttachments.getName() .. " complete")
                     end
                 end
             end
@@ -780,6 +791,7 @@ function spawnRelics()
         end
         printToAll("Retrieved " .. relicCount .. " relics from the Atlas Box")
         refreshRevisitPreview()
+        debugLog("Spawning relics from Atlas Box complete")
         return 1
     end
     startLuaCoroutine(self, "spawnRelicsCoroutine")
@@ -862,6 +874,7 @@ end
 -- Spawn all objects from a list at a given position and rotation
 function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup) 
     function spawnSiteAndAttachmentsAtTransformCoroutine() 
+        debugLog("Spawning site and attachments at given location")
         local relicNumber, denizenNumber, denizenCount = 0, 0, 0
         local siteAttachments = site.removeAttachments()
         site.setPositionSmooth(baseTransform.position, false)
@@ -873,13 +886,13 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
         end
         -- Take out edifices and relics
            -- Count edifices first but take relics out first since they can collide
+        debugLog("Counting attachments for site " .. site.getName())
         for _, obj in ipairs(siteAttachments) do
             local transform = nil
             if obj.hasTag(tags.edifice) or obj.hasTag(tags.card) then
                 denizenNumber = denizenNumber+1
             end
         end
-
         for _, obj in ipairs(siteAttachments) do
             local transform = nil
             if obj.hasTag(tags.relic) then
@@ -897,6 +910,7 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
             end
         end
         denizenNumber = 0
+        debugLog("Spawning denizen attachments for site " .. site.getName())
         for _, obj in ipairs(siteAttachments) do
             local transform = nil
             if obj.hasTag(tags.edifice) or obj.hasTag(tags.card) then
@@ -912,14 +926,15 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 obj.setScale(vector(1.65, 1.0, 1.65)) --Sometimes attaching skews the scale
             end
         end
+        debugLog("Spawning denizen attachments for site " .. site.getName() .. " complete")
         denizenNumber = denizenNumber + relicNumber
         local relicSlots = getSiteScriptTag(site, "RelicSlots")
         local banditSlots = 3-relicSlots
         -- Add any new relics
+        debugLog("Adding relics for site " .. site.getName());
         if relicNumber < relicSlots then
             if objects.relicDeck == nil then
                 printToAll("Cannot find Relic Deck. Get more relics from the Atlas Box")
-                
             else
                 for i = relicNumber, relicSlots-1 do
                     local transform = getTransformStruct("relic", denizenNumber, baseTransform)
@@ -933,6 +948,8 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 end
             end
         end
+        debugLog("Adding relics for site " .. site.getName() .. " complete")
+        debugLog("Adding bandits for site " .. site.getName())
         --Add bandits
         if banditSlots > 0 then
             for i = 0, banditSlots-1 do
@@ -944,6 +961,8 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 newBandit.setPositionSmooth(transform.position)
             end
         end
+        debugLog("Adding bandits for site " .. site.getName() .. " complete")
+        debugLog("Spawning site and attachments complete")
         return 1
     end
     startLuaCoroutine(self, "spawnSiteAndAttachmentsAtTransformCoroutine")
@@ -997,6 +1016,26 @@ function getEdificeDecks()
     return decks
 end
 
+function getEdificeDeck()
+    debugLog("Getting Edifice Deck")
+    if not (nil == getObjectFromGUID(GUIDs.edificeDeck)) then
+        return getObjectFromGUID(GUIDs.edificeDeck)
+    else
+        debugLog("Edifice Deck not found, getting by position")
+        for _, obj in ipairs(getAllObjects()) do
+            -- If the object is a deck and it's position is between -67.15, 18.75 and -63.35,13.45, return that and set it as the Edifice Deck
+            if obj.type == "Deck" and 
+               obj.getPosition().x > -67.15 and obj.getPosition().x < -63.35 and
+               obj.getPosition().z > 13.45 and obj.getPosition().z < 18.75 then
+                debugLog("Found Edifice Deck by position")
+                return obj
+            end
+        end
+    end
+    printToAll("Edifice Deck not found. Please place Edifices on the denoted area of the Archives")
+    return nil
+end
+
 function markCard(_, _, obj)
       obj.highlightOn(hexToColor("#ff00ff"))
       obj.addTag(tags.protected)
@@ -1018,7 +1057,6 @@ function debugLog(msg)
 end
 
 function getSiteScriptTag(site, tag)
-    log(site)
     return tonumber(string.match(site.getLuaScript(), (tag .. "=(%d+)")))
 end
 
@@ -1087,45 +1125,43 @@ end
 --     end
 -- end
 
-function peek(obj, player_clicker_color, alt_click)
-    showAtlasBoxPreview(player_clicker_color)
-end
+-- function peek(obj, player_clicker_color, alt_click)
+--     showAtlasBoxPreview(player_clicker_color)
+-- end
 
+-- --TODO: Add an interface and show attachments
+-- function showAtlasBoxPreview(player_color)
+--     function showAtlasBoxPreviewCoroutine()
+--         -- Set up globals to track image URLs
+--         local imageAndAttachments = {}
+--         local numSites = #objects.atlasBox.getObjects();
 
+--         -- Pull the last 2 items
+--         for i = 1, numSites do
+--             local siteWithAttachments = getFromAtlasBox(0)
+--             for j = 0, 2*getSpeedScale() do
+--                 coroutine.yield(0)
+--             end
+--             if i == 1 or i == 2 then
+--                 local relicCount = 0
+--                 local edificeCount = 0
+--                 for _, obj in ipairs(siteWithAttachments.getAttachments()) do
+--                     if dataTableContains(obj.tags, tags.relic) then
+--                         relicCount = relicCount + 1
+--                     elseif dataTableContains(obj.tags, tags.edifice) then
+--                         edificeCount = edificeCount + 1
+--                     end
+--                 end
+--                 table.insert(imageAndAttachments, {image = getImageFromObject(siteWithAttachments), relicCount = relicCount, edificeCount = edificeCount, object = siteWithAttachments})
+--             end
+--             putSiteIntoAtlasBox(siteWithAttachments)
+--         end
 
---TODO: Add an interface and show attachments
-function showAtlasBoxPreview(player_color)
-    function showAtlasBoxPreviewCoroutine()
-        -- Set up globals to track image URLs
-        local imageAndAttachments = {}
-        local numSites = #objects.atlasBox.getObjects();
-
-        -- Pull the last 2 items
-        for i = 1, numSites do
-            local siteWithAttachments = getFromAtlasBox(0)
-            for j = 0, 2*getSpeedScale() do
-                coroutine.yield(0)
-            end
-            if i == 1 or i == 2 then
-                local relicCount = 0
-                local edificeCount = 0
-                for _, obj in ipairs(siteWithAttachments.getAttachments()) do
-                    if dataTableContains(obj.tags, tags.relic) then
-                        relicCount = relicCount + 1
-                    elseif dataTableContains(obj.tags, tags.edifice) then
-                        edificeCount = edificeCount + 1
-                    end
-                end
-                table.insert(imageAndAttachments, {image = getImageFromObject(siteWithAttachments), relicCount = relicCount, edificeCount = edificeCount, object = siteWithAttachments})
-            end
-            putSiteIntoAtlasBox(siteWithAttachments)
-        end
-
-        showPreviewUI(player_color, imageAndAttachments)
-        return 1
-    end
-    startLuaCoroutine(self, "showAtlasBoxPreviewCoroutine")
-end
+--         showPreviewUI(player_color, imageAndAttachments)
+--         return 1
+--     end
+--     startLuaCoroutine(self, "showAtlasBoxPreviewCoroutine")
+-- end
 
 function getImageFromObject(obj)
     local custom = obj.getCustomObject()
