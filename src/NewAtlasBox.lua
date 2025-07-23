@@ -526,6 +526,7 @@ function unifySites()
                 end
             end
             if isEmpty then
+                debugLog("Site " .. slot .. " is empty")
                 table.insert(emptySites, slot)
             elseif #emptySites > 0 then
                 
@@ -544,7 +545,7 @@ function unifySites()
                         obj.setPositionSmooth(vectorSum(obj.getPosition(), deltaPosition), false, true)
                     end
                 end
-                debugLog("Moving objects from site " .. slot .. " to site " .. emptySites[1] .. " complete")
+                debugLog("Moving objects from site " .. slot .. " to site " .. destinationSlot .. " complete")
                 for i = 0, 40*getSpeedScale() do
                     coroutine.yield(0)
                 end
@@ -1109,12 +1110,17 @@ function tryRandomize(object)
     return false
 end
 
-function onObjectLeaveContainer(container, leave_object)
-    if container == objects.atlasBox and not objects.atlasBox.hasTag(tags.unlocked) then
-        printToAll("Atlas Box manipulation is handled by scripting.\nIf you really want to manually change things, change tags on the Atlas Box to remove its lock.\n")
-        container.putObject(leave_object)
-    end
-end
+-- function onObjectLeaveContainer(container, leave_object)
+--     -- debugLog(container.getGUID())
+--     -- debugLog(objects.atlasBox.getGUID())
+--     -- debugLog(tostring(container == objects.atlasBox))
+--     -- debugLog(tostring(objects.atlasBoxModel.hasTag(tags.unlocked)))
+--     -- printToAll(tostring((container.getGUID() == objects.atlasBox.getGUID()) and (not (objects.atlasBoxModel.hasTag(tags.unlocked)))))
+--     if ((container.getGUID() == objects.atlasBox.getGUID()) and (not (objects.atlasBoxModel.hasTag(tags.unlocked)))) then
+--         printToAll("Atlas Box manipulation is handled by scripting.\nIf you really want to manually change things, change tags on the Atlas Box to remove its lock.\n")
+--         container.putObject(leave_object)
+--     end
+-- end
 
 -- function tryObjectEnter(object)
 --     if self.hasTag(tags.unlocked) then
