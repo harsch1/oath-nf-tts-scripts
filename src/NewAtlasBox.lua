@@ -117,6 +117,12 @@ function setupObjects(isChronicleCreated)
         {objectName = "orderEdificeDeck", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
     }
     local setupTable = {
+        {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
+        {objectName = "beastEdificeDeck", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
+        {objectName = "discordEdificeDeck", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
+        {objectName = "hearthEdificeDeck", GUID = GUIDs.edificeDecks.Hearth, printableName = "Hearth Edifice Deck"},
+        {objectName = "nomadEdificeDeck", GUID = GUIDs.edificeDecks.Nomad, printableName = "Nomad Edifice Deck"},
+        {objectName = "orderEdificeDeck", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
         {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"},
     }
@@ -238,6 +244,7 @@ function chronicleSetup(obj, color, alt_click)
                 end
                 for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
                     if getSiteScriptTag(site, tag) == 1 then
+                        site.addTag(tags.ancient)
                         local edifice = nil
                         if tag == "ArcaneHomeland" then
                             edifice = getRandomObjectFromContainer(objects.arcaneEdificeDeck, false)
@@ -446,6 +453,11 @@ function ruinSites()
                 unMarkCard(_,_,obj)
                 if obj.hasTag(tags.ancient) then
                     isAncient = true
+                end
+                for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
+                    if getSiteScriptTag(obj, tag) == 1 then
+                        isAncient = true
+                    end
                 end
             end
         end
@@ -679,7 +691,7 @@ function refreshRevisitPreview()
         local totalCardCount = 0
         debugLog("Getting attachments for site " .. lastSite.getName())
         for _, obj in ipairs(lastSite.getAttachments()) do
-            if dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.relic) or obj.hasTag(tags.card) then
+            if dataTableContains(obj.tags, tags.edifice) or dataTableContains(obj.tags, tags.relic) or dataTableContains(obj.tags, tags.card) then
                 totalCardCount = totalCardCount + 1
             end
         end
