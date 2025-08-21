@@ -369,9 +369,9 @@ function GetPlayerBoardState()
     -- look for player board assets
     if string.find(deckInfo.FaceURL, "/player.jpg") then
       -- this is an exile or a chancellor
-      local oathColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow", nil})[cardIndex + 1]
-      local factionColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow", "Purple"})[cardIndex + 1]
-      local oathFaction = ({"Exile", "Exile", "Exile", "Exile", "Exile", "Exile", "Exile", "Chancellor"})[cardIndex + 1]
+      local oathColor = ({nil, "Pink", "Red", "Blue", "Black", "White", "Yellow", "Brown"})[cardIndex + 1]
+      local factionColor = ({"Purple", "Pink", "Red", "Blue", "Black", "White", "Yellow", "Brown"})[cardIndex + 1]
+      local oathFaction = ({"Chancellor", "Exile", "Exile", "Exile", "Exile", "Exile", "Exile", "Exile"})[cardIndex + 1]
 
       if oathColor == nil then
         -- look at the exile side state of the board to determine color
@@ -381,7 +381,7 @@ function GetPlayerBoardState()
       return oathColor, factionColor, oathFaction
     elseif string.find(deckInfo.FaceURL, "/player2.jpg") then
       -- this is a citizen
-      local oathColor = ({"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow"})[cardIndex + 1]
+      local oathColor = ({nil, "Pink", "Red", "Blue", "Black", "White", "Yellow",  "Brown"})[cardIndex + 1]
       local factionColor = "Purple"
       local oathFaction = "Citizen"
       return oathColor, factionColor, oathFaction

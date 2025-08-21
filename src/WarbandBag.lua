@@ -1,6 +1,7 @@
 require('src/Utils/ColorUtils')
 
 local bagColorLookup = {
+  [Color.fromHex('CD41FF')] = 'Purple',
   [Color.fromHex('F84713')] = 'Red',
   [Color.fromHex('FFE600')] = 'Yellow',
   [Color.fromHex('3F3F3F')] = 'Black',
@@ -8,10 +9,10 @@ local bagColorLookup = {
   [Color.fromHex('B45D00')] = 'Brown',
   [Color.fromHex('FFFFFF')] = 'White',
   [Color.fromHex('E57BA6')] = 'Pink',
-  [Color.fromHex('CD41FF')] = 'Purple',
 }
 
 local nameToBagColor = {
+  ['Purple'] = Color.fromHex('CD41FF'),
   ['Red'] = Color.fromHex('F84713'),
   ['Yellow'] = Color.fromHex('FFE600'),
   ['Black'] = Color.fromHex('3F3F3F'),
@@ -19,10 +20,10 @@ local nameToBagColor = {
   ['Brown'] = Color.fromHex('B45D00'),
   ['White'] = Color.fromHex('FFFFFF'),
   ['Pink'] = Color.fromHex('E57BA6'),
-  ['Purple'] = Color.fromHex('CD41FF'),
 }
 
 local warbandAssetLookup = {
+  ['Purple'] = "https://dl.dropboxusercontent.com/scl/fi/age6wjmfad10gsrdc8oqi/Warband-Purple.png?rlkey=nth3zrj7w37ch9keoqol731ad&dl=0",
   ['Red'] = "https://dl.dropboxusercontent.com/scl/fi/wjjocnvlb9bh505t6wur3/Warband-Red.png?rlkey=qv08yyw9jtk8ysnwuho56yu8y&dl=0",
   ['Yellow'] = "https://dl.dropboxusercontent.com/scl/fi/8je0moel7pkjsqi141d4q/Warband-Yellow.png?rlkey=lzjmugumgp2j7tn1p4bq1ce5l&dl=0",
   ['Black'] = "https://dl.dropboxusercontent.com/scl/fi/6x8nqx1xxtpkadrxjqvh0/Warband-Black.png?rlkey=y8yr9j317dp6yptd5s5ffvzwr&dl=0",
@@ -30,10 +31,10 @@ local warbandAssetLookup = {
   ['Brown'] = "https://dl.dropboxusercontent.com/scl/fi/dd2ut6h0hn73axi0wanv9/Warband-Brown.png?rlkey=1390z50o9520m4xevau62bz2d&dl=0",
   ['White'] = "https://dl.dropboxusercontent.com/scl/fi/jshke5j0ldd63wxib5py3/Warband-White.png?rlkey=xp87qwm3jq9tife9sp04jxl8j&dl=0",
   ['Pink'] = "https://dl.dropboxusercontent.com/scl/fi/jpczwrg2s992iii7cee6p/Warband-Pink.png?rlkey=tw5l5bpadh08v0j0vm4loffd9&dl=0",
-  ['Purple'] = "https://dl.dropboxusercontent.com/scl/fi/age6wjmfad10gsrdc8oqi/Warband-Purple.png?rlkey=nth3zrj7w37ch9keoqol731ad&dl=0",
 }
 
 local warbandSpecularIntensityLookup = {
+  ['Purple'] = 0,
   ['Red'] = 0,
   ['Yellow'] = 0,
   ['Black'] = 0.025,
@@ -41,10 +42,10 @@ local warbandSpecularIntensityLookup = {
   ['Brown'] = 0,
   ['White'] = 0,
   ['Pink'] = 0,
-  ['Purple'] = 0
 }
 
 local desiredWarbandCountLookup = {
+  ['Purple'] = 24,
   ['Red'] = 14,
   ['Yellow'] = 14,
   ['Black'] = 14,
@@ -52,7 +53,6 @@ local desiredWarbandCountLookup = {
   ['Brown'] = 14,
   ['White'] = 14,
   ['Pink'] = 14,
-  ['Purple'] = 24
 }
 
 function GetWarbandSpawnData()
@@ -188,7 +188,7 @@ function onObjectSpawn(object)
     if string.find(deckInfo.FaceURL, "/player.jpg") then
       -- this is an exile or a chancellor
       if (getPlayerMat(object) == getPlayerMat(self)) then
-        local assetColors = {"Pink", "Brown", "Red", "Blue", "Black", "White", "Yellow", "Purple"}
+        local assetColors = {"Purple", "Pink", "Red", "Blue", "Black", "White", "Yellow", "Brown"}
         self.setColorTint(nameToBagColor[assetColors[cardIndex + 1]])
       end
     elseif string.find(deckInfo.FaceURL, "/player2.jpg") then
