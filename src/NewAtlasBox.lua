@@ -961,6 +961,9 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 end
             end
         end
+        if relicNumber < relicSlots then
+            printToAll("Too many relics were attached to the site. Shuffle any excess relics into the Relic Deck")
+        end
         debugLog("Adding relics for site " .. site.getName() .. " complete")
         debugLog("Adding bandits for site " .. site.getName())
         --Add bandits
