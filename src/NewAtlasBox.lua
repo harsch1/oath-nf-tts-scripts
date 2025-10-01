@@ -109,12 +109,6 @@ function setupObjects(isChronicleCreated)
         {objectName = "atlasBoxModel", GUID = GUIDs.newAtlasBox, printableName = "Atlas Box Model"},
         {objectName = "map", GUID = GUIDs.map, printableName = "Map"},
         {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"},
-        {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
-        {objectName = "beastEdificeDeck", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
-        {objectName = "discordEdificeDeck", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
-        {objectName = "hearthEdificeDeck", GUID = GUIDs.edificeDecks.Hearth, printableName = "Hearth Edifice Deck"},
-        {objectName = "nomadEdificeDeck", GUID = GUIDs.edificeDecks.Nomad, printableName = "Nomad Edifice Deck"},
-        {objectName = "orderEdificeDeck", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
     }
     local setupTable = {
         {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
@@ -149,6 +143,7 @@ function setupObjects(isChronicleCreated)
         end
         debugLog("Detecting setup objects complete")
     else
+        getEdificeDeck()
         debugLog("Detecting site objects and adding context menu items")
         for _, obj in ipairs(getAllObjects()) do
             if obj.getDescription() == SITE_PREVIEW then
@@ -323,12 +318,12 @@ function generateNewWorldDeck()
     local decks = getArchiveDecks()
     local firstCard = nil
     local worldDeck = nil
-    -- add 9 cards from each suit
+    -- add 10 cards from each suit
 
     debugLog("Creating world deck with 9 cards of each suit")
     for _, suit in ipairs(suits) do
         local deck = decks[suit]
-        for i=1, 9 do
+        for i=1, 10 do
             local newCard = deck.takeObject()
             for i = 0, 1*getSpeedScale() do
                 coroutine.yield(0)
