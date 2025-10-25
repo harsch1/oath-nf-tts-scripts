@@ -239,7 +239,6 @@ function chronicleSetup(obj, color, alt_click)
                 end
                 for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
                     if getSiteScriptTag(site, tag) == 1 then
-                        site.addTag(tags.ancient)
                         local edifice = nil
                         if tag == "ArcaneHomeland" then
                             edifice = getRandomObjectFromContainer(objects.arcaneEdificeDeck, false)
@@ -449,11 +448,6 @@ function ruinSites()
                 if obj.hasTag(tags.ancient) then
                     isAncient = true
                 end
-                for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
-                    if getSiteScriptTag(obj, tag) == 1 then
-                        isAncient = true
-                    end
-                end
             end
         end
         debugLog("Checking for ruinable objects at site " .. index .. " complete")
@@ -464,11 +458,11 @@ function ruinSites()
                 if (obj.hasTag(tags.site) or obj.hasTag(tags.relic)) then
                     table.insert(toStoreSlot, obj)
                     obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=roundToNearest180(obj.getRotation().z)})
+                elseif ((obj.hasTag(tags.card) or obj.hasTag(tags.edifice)) and isAncient) then
+                    table.insert(toStoreSlot, obj)
                 elseif (obj.hasTag(tags.edifice) and (obj.getRotation().z < 10 or obj.getRotation().z > 350)) then
                     table.insert(toStoreSlot, obj)
                     obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=roundToNearest180(obj.getRotation().z)})
-                elseif (obj.hasTag(tags.card) and isAncient) then
-                    table.insert(toStoreSlot, obj)
                 elseif (obj.hasTag(tags.bandit)) then
                     objects.banditBag.putObject(obj)
                 elseif not (obj.getGUID() == GUIDs.map) and
