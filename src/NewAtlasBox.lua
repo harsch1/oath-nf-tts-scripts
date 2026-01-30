@@ -56,6 +56,7 @@ function onLoad()
     local chronicleExists = self.hasTag(tags.chronicleCreated)
 
     debugLog("Adding Speed buttons")
+    updateStarsButton()
     self.createButton(buttons.speedLabel)
     self.createButton(buttons.speedDisplay)
     self.createButton(buttons.speedUp)
@@ -68,9 +69,10 @@ function onLoad()
 
         debugLog("Adding Atlas Box context menu items and Foundation 9 button")
         self.addContextMenuItem("RUIN and unify Sites", ruinSites)
-        self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
-        self.addContextMenuItem("REVISIT an old Site", retrieveBack)
-        self.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
+        self.addContextMenuItem("1 RECENT Site", retrieveBack)
+        self.addContextMenuItem("1 FORGOTTEN Site", retrieveOnce)
+        self.addContextMenuItem("ALL RECENT Sites", retrieveBackAll)
+        self.addContextMenuItem("ALL FORGOTTEN Sites", retrieveRest)
         self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         self.addContextMenuItem("Search (Debug)", search)
         debugLog("Atlas Box context menu items added and Foundation 9 button")
@@ -276,7 +278,7 @@ function chronicleSetup(obj, color, alt_click)
             createRelicDeck()
             destroyObject(objects.relicBag)
 
-            unifyEdificeDecks()
+            --unifyEdificeDecks()
             
             -- Deal Starting Sites
             debugLog("Dealing starting sites")
@@ -297,9 +299,10 @@ function chronicleSetup(obj, color, alt_click)
             removeButtons(buttons.setup)
             -- createButtons(buttons.retrieve, buttons.spawnRelics, buttons.retrieveBack, buttons.ruinSites,  buttons.unifySites)
             self.addContextMenuItem("RUIN and unify Sites", ruinSites)
-            self.addContextMenuItem("EXPLORE new Sites", retrieveRest)
-            self.addContextMenuItem("REVISIT an old Site", retrieveBack)
-            self.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
+            self.addContextMenuItem("1 RECENT Site", retrieveBack)
+            self.addContextMenuItem("1 FORGOTTEN Site", retrieveOnce)
+            self.addContextMenuItem("ALL RECENT Sites", retrieveBackAll)
+            self.addContextMenuItem("ALL FORGOTTEN Sites", retrieveRest)
             self.addContextMenuItem("Retrieve lost Relics", spawnRelics)
             self.addContextMenuItem("Search (Debug)", search)
             debugLog("Adding context menu items complete")
@@ -524,6 +527,9 @@ function unifySites()
                         obj.setLock(true)
                         isEmpty = false
                     end
+                    if obj.hasTag(tags.edifice) then
+                        obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=0})
+                    end
                 end
             end
             if isEmpty then
@@ -587,11 +593,10 @@ end
 -- ATLAS BOX RETRIEVAL
 -- ==============================
 
-function retrieve(player_color, object_position, object, retrieveIndexOrFalse, continual)
+function retrieve(player_color, object_position, object, retrieveFront, continual)
     debugLog("Retrieving site(s) from Atlas Box")
-    local retrieveIndex = (retrieveIndexOrFalse == nil) and 0 or retrieveIndexOrFalse
+    local retrieveIndex = retrieveFront and 0 or (#objects.atlasBox.getObjects())-1
     local hasRetrieved = false
-    local retrieveBack = retrieveIndex == (#objects.atlasBox.getObjects())-1
     function retrieveAtFirstEmptySlot(foundObjects, slotNumber)
         if not hasRetrieved or continual then
             for _, obj in ipairs(foundObjects) do
@@ -630,8 +635,9 @@ function retrieve(player_color, object_position, object, retrieveIndexOrFalse, c
             if isDebug() then
                 printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ")) or ("Summoning Empty Site"))
             end
-            if retrieveBack then
+            if not retrieveFront then
                 refreshRevisitPreview()
+                retrieveIndex = #objects.atlasBox.getObjects()-1
             end
             return
         end
@@ -648,16 +654,22 @@ function retrieve(player_color, object_position, object, retrieveIndexOrFalse, c
     end
 end
 
+-- "back = recent sites"
 function retrieveBack(player_color, object_position, object)
-    retrieve(player_color, object_position, object, (#objects.atlasBox.getObjects())-1, false)
+    retrieve(player_color, object_position, object, false, false)
 end
 
+function retrieveBackAll(player_color, object_position, object)
+    retrieve(player_color, object_position, object, false, true)
+end
+
+-- "front = forgotten sites"
 function retrieveRest(player_color, object_position, object)
-    retrieve(player_color, object_position, object, 0, true)
+    retrieve(player_color, object_position, object, true, true)
 end
 
 function retrieveOnce(player_color, object_position, object)
-    retrieve(player_color, object_position, object, 0, false)
+    retrieve(player_color, object_position, object, true, false)
 end
 
 function refreshRevisitPreview()
@@ -733,9 +745,10 @@ function refreshRevisitPreview()
         siteClone.setName("New Atlas Box")
         siteClone.setDescription(SITE_PREVIEW)
         siteClone.addContextMenuItem("RUIN and unify Sites", ruinSites)
-        siteClone.addContextMenuItem("EXPLORE new Sites", retrieveRest)
-        siteClone.addContextMenuItem("REVISIT an old Site", retrieveBack)
-        siteClone.addContextMenuItem("EXPLORE a new Site", retrieveOnce)
+        siteClone.addContextMenuItem("1 RECENT Site", retrieveBack)
+        siteClone.addContextMenuItem("1 FORGOTTEN Site", retrieveOnce)
+        siteClone.addContextMenuItem("ALL RECENT Sites", retrieveBackAll)
+        siteClone.addContextMenuItem("ALL FORGOTTEN Sites", retrieveRest)
         siteClone.addContextMenuItem("Retrieve lost Relics", spawnRelics)
         siteClone.addContextMenuItem("Search (Debug)", search)
         table.insert(sitePreview, siteClone)
@@ -883,9 +896,9 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
         site.setRotationSmooth(baseTransform.rotation, false)
         site.addContextMenuItem("Preserve Site", markCard)
         site.addContextMenuItem("Allow Site to Ruin", unMarkCard)
-        if(duringSetup) then
+        --if(duringSetup) then
             site.setLock(true)
-        end
+        --end
         -- Take out edifices and relics
            -- Count edifices first but take relics out first since they can collide
         debugLog("Counting attachments for site " .. site.getName())
@@ -1188,4 +1201,25 @@ function search(player_color)
     if self.hasTag(tags.debug) then
         objects.atlasBox.Container.search(player_color)
     end 
+end
+
+function updateStarsButton()
+    if (getObjectFromGUID(GUIDs.starsCard) == null) then
+        return
+    end
+    if not (getObjectFromGUID(GUIDs.starsCard).getButtons() == null) then
+        for i, button in ipairs(getObjectFromGUID(GUIDs.starsCard).getButtons()) do
+            oldColor = button.color
+            if not (oldColor == hexToColorAlpha("#00000088")) then
+                getObjectFromGUID(GUIDs.starsCard).removeButton(button.index)
+                getObjectFromGUID(GUIDs.starsCard).createButton(buttons.starsButtonHidden)
+                return
+            else
+                getObjectFromGUID(GUIDs.starsCard).removeButton(button.index)
+                getObjectFromGUID(GUIDs.starsCard).createButton(buttons.starsButton)
+                return
+            end
+        end
+    end
+    getObjectFromGUID(GUIDs.starsCard).createButton(buttons.starsButton)
 end

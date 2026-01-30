@@ -82,5 +82,41 @@ buttons = {
         font_size      = 200,
         color          = hexToColor("#999999"),
         font_color     = {1, 1, 1, 1},
+    },
+    starsButton = {
+        click_function = "updateStarsButton",
+        function_owner = self,
+        label          = "Right click on all       \n"..
+                         "Empire-ruled sites    \n"..
+                         "to preserve them      \n"..
+                         "from ruin.                  \n\n"..
+                         "Use the Atlas Box      \n"..
+                         "right click menu        \n"..
+                         "to ruin and unify       \n"..
+                         "sites.                           \n\n"..
+                         "(Click me to read       \n"..
+                         "  underlying text)       ",
+        position       = {0, 0.2, 0.375},
+        scale          = {1.25, 1.0, 1.0},
+        rotation       = {0, 0, 0},
+        width          = 750,
+        height         = 950,
+        font_size      = 75,
+        color          = hexToColorAlpha("#000000ee"),
+        font_color     = {1, 1, 1, 1},
+        tooltip        = "Click me to toggle transparency", 
+    },
+    starsButtonHidden = {
+        click_function = "updateStarsButton",
+        function_owner = self,
+        position       = {0, 0.2, 0.375},
+        scale          = {1.25, 1.0, 1.0},
+        rotation       = {0, 0, 0},
+        width          = 750,
+        height         = 950,
+        font_size      = 75,
+        color          = hexToColorAlpha("#00000088"),
+        font_color     = {1, 1, 1, 1},
+        tooltip        = "Click me to toggle transparency", 
     }
 }

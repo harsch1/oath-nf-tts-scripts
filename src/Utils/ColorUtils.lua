@@ -65,3 +65,16 @@ function hexToColor(hex)
   -- Return the RGB values as floats
   return Color(r, g, b)
 end
+function hexToColorAlpha(hex)
+  -- Remove the "#" if it exists
+  hex = hex:gsub("#", "")
+
+  -- Convert each pair of hex digits to decimal and then to float
+  local r = tonumber(hex:sub(1, 2), 16) / 255
+  local g = tonumber(hex:sub(3, 4), 16) / 255
+  local b = tonumber(hex:sub(5, 6), 16) / 255
+  local a = tonumber(hex:sub(7, 8), 16) / 255
+
+  -- Return the RGB values as floats
+  return Color(r, g, b, a)
+end

@@ -28,6 +28,7 @@ GUIDs = {
         Order = "33d062"
     },
     scriptingTrigger = '84ebee',
+    starsCard = "43c99e",
 
 }
 
