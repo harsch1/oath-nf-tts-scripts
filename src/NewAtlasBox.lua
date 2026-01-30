@@ -145,7 +145,6 @@ function setupObjects(isChronicleCreated)
         end
         debugLog("Detecting setup objects complete")
     else
-        getEdificeDeck()
         debugLog("Detecting site objects and adding context menu items")
         for _, obj in ipairs(getAllObjects()) do
             if obj.getDescription() == SITE_PREVIEW then
@@ -468,16 +467,12 @@ function ruinSites()
                     obj.setRotation({x= obj.getRotation().x, y= roundToNearest180(obj.getRotation().y), z=roundToNearest180(obj.getRotation().z)})
                 elseif (obj.hasTag(tags.bandit)) then
                     objects.banditBag.putObject(obj)
+                elseif obj.hasTag(tags.edifice) then
+                    obj.setPositionSmooth(vector(-55, 2.0, 13.8), false, true)
                 elseif not (obj.getGUID() == GUIDs.map) and
                        not (obj.getGUID() == GUIDs.table) and
                        not (obj.getGUID() == GUIDs.scriptingTrigger) and
                        not (obj.memo == "trigger") then
-                        if  obj.hasTag(tags.edifice) then
-                            if not (nil == getEdificeDeck()) then
-                                getEdificeDeck().putObject(obj)
-                                getEdificeDeck().shuffle()
-                            end
-                        end
                     local randomOffset = {
                         x = (math.random() - 0.5) * 15,
                         y = (math.random() - 0.5) * 20,
@@ -1034,25 +1029,25 @@ function getEdificeDecks()
     return decks
 end
 
-function getEdificeDeck()
-    debugLog("Getting Edifice Deck")
-    if not (nil == getObjectFromGUID(GUIDs.edificeDeck)) then
-        return getObjectFromGUID(GUIDs.edificeDeck)
-    else
-        debugLog("Edifice Deck not found, getting by position")
-        for _, obj in ipairs(getAllObjects()) do
-            -- If the object is a deck and it's position is between -67.15, 18.75 and -63.35,13.45, return that and set it as the Edifice Deck
-            if obj.type == "Deck" and 
-               obj.getPosition().x > -67.15 and obj.getPosition().x < -63.35 and
-               obj.getPosition().z > 13.45 and obj.getPosition().z < 18.75 then
-                debugLog("Found Edifice Deck by position")
-                return obj
-            end
-        end
-    end
-    printToAll("Edifice Deck not found. Please place Edifices on the denoted area of the Archives")
-    return nil
-end
+-- function getEdificeDeck()
+--     debugLog("Getting Edifice Deck")
+--     if not (nil == getObjectFromGUID(GUIDs.edificeDeck)) then
+--         return getObjectFromGUID(GUIDs.edificeDeck)
+--     else
+--         debugLog("Edifice Deck not found, getting by position")
+--         for _, obj in ipairs(getAllObjects()) do
+--             -- If the object is a deck and it's position is between -67.15, 18.75 and -63.35,13.45, return that and set it as the Edifice Deck
+--             if obj.type == "Deck" and 
+--                obj.getPosition().x > -67.15 and obj.getPosition().x < -63.35 and
+--                obj.getPosition().z > 13.45 and obj.getPosition().z < 18.75 then
+--                 debugLog("Found Edifice Deck by position")
+--                 return obj
+--             end
+--         end
+--     end
+--     printToAll("Edifice Deck not found. Please place Edifices on the denoted area of the Archives")
+--     return nil
+-- end
 
 function markCard(_, _, obj)
       obj.highlightOn(hexToColor("#ff00ff"))
