@@ -939,7 +939,7 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
         debugLog("Spawning denizen attachments for site " .. site.getName() .. " complete")
         denizenNumber = denizenNumber + relicNumber
         local relicSlots = getSiteScriptTag(site, "RelicSlots")
-        local banditSlots = 3-relicSlots
+        local banditSlots = getSiteScriptTag(site, "DenizenSlots")
         -- Add any new relics
         debugLog("Adding relics for site " .. site.getName());
         if relicNumber < relicSlots then

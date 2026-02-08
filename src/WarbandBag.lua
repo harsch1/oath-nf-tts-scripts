@@ -218,3 +218,6 @@ function onHover(player_color)
   RepeatGuard(UpdateWarbandCountAndColor)
 end
 
+function tryObjectEnter(object)
+  return object.hasTag("Warband")
+end
