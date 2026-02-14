@@ -497,7 +497,7 @@ function ruinSites()
             startLuaCoroutine(self, "quickStoreCoroutine")
         end
     end
-    getObjectsAtSites(getRuinableObjectsAtSite, false)
+    getObjectsAtSitesThenCallbackForEach(getRuinableObjectsAtSite, false)
 end
 
 function unifySites()
@@ -561,7 +561,7 @@ function unifySites()
         end
         startLuaCoroutine(self, "unifySitesCallbackCoroutine")
     end
-    getObjectsAtSites(unifySitesCallback, true)    
+    getObjectsAtSitesThenCallbackForEach(unifySitesCallback, true)    
 end
 
 function unifyEdificeDecks()
@@ -588,11 +588,14 @@ end
 -- ATLAS BOX RETRIEVAL
 -- ==============================
 
-function retrieve(player_color, object_position, object, retrieveFront, continual)
+function retrieve(player_color, object_position, object, retrieveForgotten, continual)
     debugLog("Retrieving site(s) from Atlas Box")
-    local retrieveIndex = retrieveFront and 0 or (#objects.atlasBox.getObjects())-1
+    local retrieveIndex = retrieveForgotten and 0 or (#objects.atlasBox.getObjects())-1
     local hasRetrieved = false
     function retrieveAtFirstEmptySlot(foundObjects, slotNumber)
+        if not retrieveForgotten then
+            retrieveIndex = #objects.atlasBox.getObjects()-1
+        end
         if not hasRetrieved or continual then
             for _, obj in ipairs(foundObjects) do
                 if obj.hasTag(tags.site) then
@@ -630,9 +633,11 @@ function retrieve(player_color, object_position, object, retrieveFront, continua
             if isDebug() then
                 printToAll(#messageParts > 0 and ("Summoning Site with " .. table.concat(messageParts, ", ")) or ("Summoning Empty Site"))
             end
-            if not retrieveFront then
-                refreshRevisitPreview()
+            if not retrieveForgotten then
                 retrieveIndex = #objects.atlasBox.getObjects()-1
+                if slotNumber == 8 then
+                    refreshRevisitPreview()
+                end
             end
             return
         end
@@ -642,7 +647,7 @@ function retrieve(player_color, object_position, object, retrieveFront, continua
     end
     if not retrieveInCooldown then
         retrieveInCooldown = true
-        getObjectsAtSites(retrieveAtFirstEmptySlot, true)
+        getObjectsAtSitesThenCallbackForEach(retrieveAtFirstEmptySlot, true)
         Wait.time(function()
             retrieveInCooldown = false
         end, 0.5)
@@ -982,27 +987,34 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
     return
 end
 
-function getObjectsAtSites(callback, forwards)
+function getObjectsAtSitesThenCallbackForEach(callback, forwards)
     function getObjectAtSite(callback, index, endIndex, step)
-        local zone = spawnObject({
-            type = "FogOfWarTrigger",
-            position = vectorSum(getTransformStruct("site", index, mapTransform).position, vector(5.65, 0, 0)),
-            scale = vector(19.5,2,5.4),
-            sound = false,
-            callback_function = function(createdZone)
-                createdZone.memo = "trigger"
-                Wait.time(function()
-                    local hitObjects = createdZone.getObjects(true)
-                    callback(hitObjects, index)
-                    if not (index == endIndex) then
-                        getObjectAtSite(callback, index + step, endIndex, step)
-                    end
-                    Wait.time(function ()
-                        destroyObject(createdZone)
-                    end, 0.2)
-                end, 0.1)
+        function getObjectAtSiteCoroutine()
+            for i = 0, 3*getSpeedScale() do
+                coroutine.yield(0)
             end
-        })
+            local zone = spawnObject({
+                type = "FogOfWarTrigger",
+                position = vectorSum(getTransformStruct("site", index, mapTransform).position, vector(5.65, 0, 0)),
+                scale = vector(19.5,2,5.4),
+                sound = false,
+                callback_function = function(createdZone)
+                    createdZone.memo = "trigger"
+                    Wait.time(function()
+                        local hitObjects = createdZone.getObjects(true)
+                        callback(hitObjects, index)
+                        if not (index == endIndex) then
+                            getObjectAtSite(callback, index + step, endIndex, step)
+                        end
+                        Wait.time(function ()
+                            destroyObject(createdZone)
+                        end, 0.2)
+                    end, 0.1)
+                end
+            })
+            return 1
+        end
+        startLuaCoroutine(self, "getObjectAtSiteCoroutine")
     end
 
     

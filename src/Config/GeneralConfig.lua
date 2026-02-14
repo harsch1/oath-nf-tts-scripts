@@ -97,7 +97,7 @@ rot = {
     relic =         {x = 180, y = 0,   z = 0},
     relicStack =    {x = 180, y = 0,   z = 0},
     site =          {x = 0,   y = 180, z = 0},
-    worldDeck =     {x = 0,   y = 90,  z = 180},
+    worldDeck =     {x = 0,   y = 270,  z = 180},
 }
 
 suits = {"Arcane","Beast","Discord","Hearth","Nomad","Order"}
