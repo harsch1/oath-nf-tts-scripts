@@ -92,7 +92,8 @@ Garrison Armory,OATH-255,Garrison Armory.png
 Battle Axes,OATH-256,Battle Axes.png
 Great Feast,OATH-257,Great Feast.png
 Quartermaster,OATH-258,Quartermaster.png
-Giant's Rampage,OATH-E01,Giant's Rampage.png
+Hall of Debate,OATH-E01,Hall of Debate.png
+Hall of Mockery,OATH-E01,Hall of Mockery.png
 Bandit Market,OATH-E02,Bandit Market.png
 Great Market,OATH-E02,Great Market.png
 Grand Canal,OATH-E03,Grand Canal.png
@@ -102,16 +103,20 @@ Stone Baths,OATH-E04,Stone Baths.png
 Amber Doors,OATH-E05,Amber Doors.png
 Lost Doors,OATH-E05,Lost Doors.png
 Great Forge,OATH-E06,Great Forge.png
+Broken Forge,OATH-E06,Broken Forge.png
 Blasted Pastures,OATH-E07,Blasted Pastures.png
 Wild Pastures,OATH-E07,Wild Pastures.png
 Desecrated Ground,OATH-E08,Desecrated Ground.png
 Sacred Ground,OATH-E08,Sacred Ground_P1.png
 Giant's Path,OATH-E09,Giant's Path.png
+Giant's Rampage,OATH-E09,Giant's Rampage.png
 Temple Of Ancestors,OATH-E10,Temple Of Ancestors.png
+Ruined Temple,OATH-E10,Ruined Temple.png
 Fallen Spire,OATH-E11,Fallen Spire.png
 Great Spire,OATH-E11,Great Spire.png
 Broken Clock,OATH-E12,Broken Clock.png
 Great Clock,OATH-E12,Great Clock.png
+Underground Library,OATH-E13,Underground Library.png
 Drowned Library,OATH-E13,Drowned Library.png
 Shattered Portal,OATH-E14,Shattered Portal.png
 Stone Portal,OATH-E14,Stone Portal.png
@@ -123,6 +128,7 @@ Bandit Patrols,OATH-E17,Bandit Patrols.png
 Relic Patrols,OATH-E17,Relic Patrols.png
 Lost Guardians,OATH-E18,Lost Guardians.png
 Tome Guardians,OATH-E18,Tome Guardians_P1.png
+The Tribunal,OATH-E19,The Tribunal.png
 Bandit Tribunal,OATH-E19,Bandit Tribunal.png
 Cracked Rampart,OATH-E20,Cracked Rampart.png
 Towering Rampart,OATH-E20,Towering Rampart.png
@@ -145,3 +151,4 @@ Rotting Fortress,OATH-E28,Rotting Fortress.png
 Bandit Forest,OATH-E29,Bandit Forest.png
 Forbidden Forest,OATH-E29,Forbidden Forest.png
 Forest Horn,OATH-E30,Forest Horn.png
+Broken Horn,OATH-E30,Broken Horn.png
