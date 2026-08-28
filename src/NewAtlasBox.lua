@@ -201,31 +201,6 @@ function chronicleSetup(obj, color, alt_click)
             end
             -- Tag all cards
             printToAll("organizing cards...")
-            local decksDone = 0
-            debugLog("Tagging all archive cards")
-            for _, deck in pairs(getArchiveDecks()) do
-                function tagAllCardsInDeck(_deck)
-                    local deckSize = #deck.getObjects()
-                    for i = deckSize-1, 0, -1 do
-                        local card = deck.takeObject({index = i})
-                        for i = 0, 1*getSpeedScale() do
-                            coroutine.yield(0)
-                        end
-                        card.addTag(tags.card)
-                        for i = 0, 1*getSpeedScale() do
-                            coroutine.yield(0)
-                        end
-                        deck.putObject(card)
-                    end
-                    decksDone = decksDone+1
-                    return 1
-                end
-                startLuaCoroutine(self, "tagAllCardsInDeck")
-            end
-            debugLog("Tagging all archive cards complete")
-            while decksDone < 6 do
-                coroutine.yield(0)
-            end
             for _, deck in pairs(getArchiveDecks()) do
                 deck.setRotation({0,180,180})
                 deck.shuffle()

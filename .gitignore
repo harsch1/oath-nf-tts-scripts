@@ -1,1 +1,8 @@
+.DS_Store
 *.code-workspace
+/assets/favor/
+/assets/foldboxes/
+/assets/secrets/
+/legacy/
+/__pycache__/*
+/helper_scripts/
