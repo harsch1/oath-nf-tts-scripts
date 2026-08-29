@@ -16,12 +16,14 @@ local objects = {
     siteBag = nil,
     table = nil,
     map = nil,
-    arcaneEdificeDeck = nil,
-    beastEdificeDeck = nil,
-    discordEdificeDeck = nil,
-    hearthEdificeDeck = nil,
-    nomadEdificeDeck = nil,
-    orderEdificeDeck = nil,
+    edificeDecks = {
+        Arcane = nil,
+        Beast = nil,
+        Discord = nil,
+        Hearth = nil,
+        Nomad = nil,
+        Order = nil
+    }
 }
 
 local SITE_PREVIEW = "SITE PREVIEW"
@@ -113,12 +115,12 @@ function setupObjects(isChronicleCreated)
         {objectName = "banditBag", GUID = GUIDs.banditBag, printableName = "Bandit Bag"},
     }
     local setupTable = {
-        {objectName = "arcaneEdificeDeck", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
-        {objectName = "beastEdificeDeck", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
-        {objectName = "discordEdificeDeck", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
-        {objectName = "hearthEdificeDeck", GUID = GUIDs.edificeDecks.Hearth, printableName = "Hearth Edifice Deck"},
-        {objectName = "nomadEdificeDeck", GUID = GUIDs.edificeDecks.Nomad, printableName = "Nomad Edifice Deck"},
-        {objectName = "orderEdificeDeck", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
+        {objectName = "edificeDecks/Arcane", GUID = GUIDs.edificeDecks.Arcane, printableName = "Arcane Edifice Deck"},
+        {objectName = "edificeDecks/Beast", GUID = GUIDs.edificeDecks.Beast, printableName = "Beast Edifice Deck"},
+        {objectName = "edificeDecks/Discord", GUID = GUIDs.edificeDecks.Discord, printableName = "Discord Edifice Deck"},
+        {objectName = "edificeDecks/Hearth", GUID = GUIDs.edificeDecks.Hearth, printableName = "Hearth Edifice Deck"},
+        {objectName = "edificeDecks/Nomad", GUID = GUIDs.edificeDecks.Nomad, printableName = "Nomad Edifice Deck"},
+        {objectName = "edificeDecks/Order", GUID = GUIDs.edificeDecks.Order, printableName = "Order Edifice Deck"},
         {objectName = "relicBag", GUID = GUIDs.relicBag, printableName = "Relic Bag"},
         {objectName = "siteBag", GUID = GUIDs.siteBag, printableName = "Site Bag"},
     }
@@ -137,10 +139,22 @@ function setupObjects(isChronicleCreated)
     if not isChronicleCreated then
         debugLog("Detecting setup objects")
         for _, setupItem in ipairs(setupTable) do
-            objects[setupItem.objectName] = getObjectFromGUID(setupItem.GUID)
-            if objects[setupItem.objectName] == nil then
-                printToAll("ERROR: Cannot find " .. setupItem.printableName .. " by GUID")
-                foundAll = false
+            if setupItem.objectName:find("/") then
+                local parts = {}
+                for part in string.gmatch(setupItem.objectName, "[^/]+") do
+                    table.insert(parts, part)
+                end
+                objects[parts[1]][parts[2]] = getObjectFromGUID(setupItem.GUID)
+                if objects[parts[1]][parts[2]] == nil then
+                    printToAll("ERROR: Cannot find " .. setupItem.printableName .. " by GUID")
+                    foundAll = false
+                end
+            else
+                objects[setupItem.objectName] = getObjectFromGUID(setupItem.GUID)
+                if objects[setupItem.objectName] == nil then
+                    printToAll("ERROR: Cannot find " .. setupItem.printableName .. " by GUID")
+                    foundAll = false
+                end
             end
         end
         debugLog("Detecting setup objects complete")
@@ -199,7 +213,7 @@ function chronicleSetup(obj, color, alt_click)
                 self.createButton(buttons.retry)
                 return
             end
-            -- Tag all cards
+            -- Arrange all cards
             printToAll("organizing cards...")
             for _, deck in pairs(getArchiveDecks()) do
                 deck.setRotation({0,180,180})
@@ -207,40 +221,37 @@ function chronicleSetup(obj, color, alt_click)
             end
             -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
             printToAll("creating the world...")
-            debugLog("Attaching edifices and enduring tag to homeland sites")
+            debugLog("Attaching edifices and relics sites")
             for i = 1,  #objects.siteBag.getObjects() do
                 local site = getRandomSite()
                 for i = 0, 2*getSpeedScale() do
                     coroutine.yield(0)
                 end
-                for _, tag in ipairs({"ArcaneHomeland", "BeastHomeland", "DiscordHomeland", "HearthHomeland", "NomadHomeland", "OrderHomeland"}) do
-                    if getSiteScriptTag(site, tag) == 1 then
-                        local edifice = nil
-                        if tag == "ArcaneHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.arcaneEdificeDeck, false)
-                        elseif tag == "BeastHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.beastEdificeDeck, false)
-                        elseif tag == "DiscordHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.discordEdificeDeck, false)
-                        elseif tag == "HearthHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.hearthEdificeDeck, false)
-                        elseif tag == "NomadHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.nomadEdificeDeck, false)
-                        elseif tag == "OrderHomeland" then
-                            edifice = getRandomObjectFromContainer(objects.orderEdificeDeck, false)
-                        end
-                        edifice.setPosition(
-                            getTransformStruct("denizen",
-                            0,
-                            { position= site.getPosition(), rotation= site.getRotation()}
-                        ).position)
-                        site.addAttachment(edifice)
-                    end
+                local denizenCount = 0
+                if dataTableContains(getSiteScriptTag(site, "Tags"), "Homeland") then
+                    local edifice = nil
+                    -- Get the non-homeland tag to determine which edifice deck to draw from
+                    edifice = getRandomObjectFromContainer(objects.edificeDecks[getSiteScriptTag(site, "Tags")[2]], false)
+                    edifice.setPosition(
+                        getTransformStruct("denizen",
+                        0,
+                        { position= site.getPosition(), rotation= site.getRotation()}
+                    ).position)
+                    site.addAttachment(edifice)
+                    denizenCount = denizenCount + 1
                 end
-
-                
-                if getSiteScriptTag(site, "Enduring") == 1 then
-                    site.addTag(tags.ancient)
+                for i = 1, getSiteScriptTag(site, "RelicSlots") do
+                    relic = getRandomObjectFromContainer(objects.relicBag, false)
+                    relic.setPositionSmooth(
+                        getTransformStruct("relic",
+                        denizenCount,
+                        { position= site.getPosition(), rotation= rot.relic}
+                    ).position)
+                    for i = 0, 3*getSpeedScale() do
+                        coroutine.yield(0)
+                    end
+                    site.addAttachment(relic)
+                    denizenCount = denizenCount + 1
                 end
                 for i = 0, 1*getSpeedScale() do
                     coroutine.yield(0)
@@ -422,7 +433,7 @@ function ruinSites()
                 obj.setLock(false)
                 isProtected = obj.hasTag(tags.protected)
                 unMarkCard(_,_,obj)
-                if obj.hasTag(tags.ancient) then
+                if dataTableContains(getSiteScriptTag(obj, "Tags"), "Enduring") then
                     isAncient = true
                 end
             end
@@ -537,26 +548,6 @@ function unifySites()
         startLuaCoroutine(self, "unifySitesCallbackCoroutine")
     end
     getObjectsAtSitesThenCallbackForEach(unifySitesCallback, true)    
-end
-
-function unifyEdificeDecks()
-    debugLog("Unifying Edifice decks")
-    local decks = getEdificeDecks()
-    local firstDeck = decks.Arcane
-    for _, deck in pairs(decks) do
-        if deck ~= firstDeck then
-            firstDeck.putObject(deck)
-            for i = 0, 1*getSpeedScale() do
-                coroutine.yield(0)
-            end
-        end
-    end
-    for i = 0, 3*getSpeedScale() do
-        coroutine.yield(0)
-    end
-    firstDeck.setName("Edifice Deck")
-    firstDeck.shuffle()
-    debugLog("Unifying Edifice decks complete")
 end
 
 -- ==============================
@@ -883,6 +874,7 @@ function spawnSiteAndAttachmentsAtTransform(site, baseTransform, duringSetup)
                 denizenNumber = denizenNumber+1
             end
         end
+        debugLog("Spawning relics for site " .. site.getName())
         for _, obj in ipairs(siteAttachments) do
             local transform = nil
             if obj.hasTag(tags.relic) then
@@ -1008,13 +1000,13 @@ function getArchiveDecks()
     return decks
 end
 
-function getEdificeDecks() 
-    local decks = {} 
-    for deckName, guid in pairs(GUIDs.edificeDecks) do
-        decks[deckName] = getObjectFromGUID(guid)
-    end
-    return decks
-end
+-- function getEdificeDecks() 
+--     local decks = {} 
+--     for deckName, guid in pairs(GUIDs.edificeDecks) do
+--         decks[deckName] = getObjectFromGUID(guid)
+--     end
+--     return decks
+-- end
 
 -- function getEdificeDeck()
 --     debugLog("Getting Edifice Deck")
@@ -1057,7 +1049,20 @@ function debugLog(msg)
 end
 
 function getSiteScriptTag(site, tag)
-    return tonumber(string.match(site.getLuaScript(), (tag .. "=(%d+)")))
+    local raw = string.match(site.getLuaScript(), tag .. "=([^\n]+)")
+    if not raw then return nil end
+    if string.match(raw, "^%s*{") then
+        local list = {}
+        for str in string.gmatch(raw, "\"([^\"]*)\"") do
+            table.insert(list, str)
+        end
+        return list
+    end
+    local num = tonumber(raw)
+    if num then return num end
+    local str = string.match(raw, "^%s*\"(.*)\"%s*$")
+    if str then return str end
+    return raw
 end
 
 function getSpeedScale()
