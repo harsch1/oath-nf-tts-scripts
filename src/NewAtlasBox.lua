@@ -219,7 +219,7 @@ function chronicleSetup(obj, color, alt_click)
                 deck.setRotation({0,180,180})
                 deck.shuffle()
             end
-            -- Take all sites and put them in the Atlas Box. Roll a d6 and add additional items depending on the roll
+            -- Take all sites and put them in the Atlas Box.
             printToAll("creating the world...")
             debugLog("Attaching edifices and relics sites")
             for i = 1,  #objects.siteBag.getObjects() do
@@ -238,19 +238,6 @@ function chronicleSetup(obj, color, alt_click)
                         { position= site.getPosition(), rotation= site.getRotation()}
                     ).position)
                     site.addAttachment(edifice)
-                    denizenCount = denizenCount + 1
-                end
-                for i = 1, getSiteScriptTag(site, "RelicSlots") do
-                    relic = getRandomObjectFromContainer(objects.relicBag, false)
-                    relic.setPositionSmooth(
-                        getTransformStruct("relic",
-                        denizenCount,
-                        { position= site.getPosition(), rotation= rot.relic}
-                    ).position)
-                    for i = 0, 3*getSpeedScale() do
-                        coroutine.yield(0)
-                    end
-                    site.addAttachment(relic)
                     denizenCount = denizenCount + 1
                 end
                 for i = 0, 1*getSpeedScale() do
