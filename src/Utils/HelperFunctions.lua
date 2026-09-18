@@ -87,3 +87,40 @@ end
             rotation = rot[tag],
         }
     end
+
+        local b = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/!~$%^&(){}";:,.?'
+
+function oEncode(data)
+    -- print(data)
+    assert(type(data) == 'number' and data >= 0 and data % 1 == 0,
+        'encode expects a non-negative integer')
+    if data == 0 then return b:sub(1, 1) end
+
+    local result = ''
+    while data > 0 do
+        local remainder = data % 82
+        result = b:sub(remainder + 1, remainder + 1) .. result
+        data = math.floor(data / 82)
+    end
+    return result
+end
+
+function oEncode2D(data)
+    local result = oEncode(data)
+    if #result == 1 then
+        result = "0" .. result
+    end
+    return result
+end
+
+function oDecode(data)
+    assert(type(data) == 'string' and data ~= '',
+        'decode expects a non-empty base64 string')
+    local result = 0
+    for i = 1, #data do
+        local value = b:find(data:sub(i, i), 1, true)
+        assert(value, 'decode received an invalid string')
+        result = result * 82 + value - 1
+    end
+    return result
+end

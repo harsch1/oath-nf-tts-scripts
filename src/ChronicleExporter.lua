@@ -4,7 +4,7 @@ require("src/Config/GeneralConfig")
 require("src/Config/CardMapping")
 
 
-local steps = {"PreInit","Init", "Atlas Box", "World", "World Deck", "Relic Deck", "Foundations", "Dispos", "Players", "Reliquary",}
+local steps = {"PreInit","Init", "Atlas Box", "World", "World Deck", "Relic Deck", "Dispos", "Reliquary", "Foundations", "Players"}
 
 currentStep = ""
 stringSoFar = ""
@@ -16,13 +16,13 @@ function onLoad(state)
         if loadedData then
             if loadedData.currentStep then -- TODO: revert to proper save/load
                 -- currentStep = loadedData.currentStep
-                currentStep = "Atlas Box"
+                currentStep = "PreInit"
             end
             if loadedData.stringSoFar then
                 stringSoFar = ""
             end
         else
-            currentStep = "Atlas Box"
+            currentStep = "PreInit"
             stringSoFar = ""
         end
     end
@@ -44,15 +44,20 @@ function advanceExportSteps()
         .. "Please follow the instructions in this chat to complete the export process "
         .. "and create a backup of your save that you can reload if you need to recover.", hexToColor("#e7ce87"))
         printToAll("\nWhen you're ready, click 'OK' to continue to the next step.\n===========", hexToColor("#e7ce87"))
-        
-    elseif currentStep == "Init" then
-        printToAll("Ensure the map is cleaned up except for the current Empire and that all Foundations are correctly flipped.\n"
-        .. "Archive all unarchived players so no player has their things out.",  hexToColor("#e7ce87"))  
-        printToAll("Click Ready when you're read for the next step\n===========",  hexToColor("#e7ce87"))
-        
+        nextStep()
+        updateButton()
+        return
+    end    
+    if currentStep == "Init" then
+        printToAll("Ensure the map is cleaned up except for the current Empire and that all Foundations are correctly flipped.==",  hexToColor("#e7ce87"))  
+        printToAll("Click Ready when you're ready for the next step\n===========",  hexToColor("#e7ce87"))
+        nextStep()
+        updateButton()
+        return
+    end    
         
 
-    elseif currentStep == "Atlas Box" then
+    if currentStep == "Atlas Box" then
         if getObjectFromGUID(GUIDs.atlasBox) == null then
             printToAll("Atlas Box not found! Please ensure the Atlas Box is on the table and try again.\n===========",  hexToColor("#e7ce87"))
             return
@@ -61,8 +66,9 @@ function advanceExportSteps()
             errors = 0
             for _, siteObject in ipairs(getObjectFromGUID(GUIDs.atlasBox).getData().ContainedObjects) do
                 local siteName = siteObject.Nickname
+                local mult = 100
                 -- printToAll("site: " .. siteName)
-                stringSoFar = stringSoFar .. oEncode(siteIndex[siteName])
+                local sum = siteIndex[siteName]
                 if siteObject.ChildObjects then 
                     for _, childObject in ipairs(siteObject.ChildObjects) do
                         if childObject.Tags then
@@ -75,42 +81,130 @@ function advanceExportSteps()
                                 })[tag] or objectType
                             end
                             if objectType == tags.edifice then
-                                local foo = bar --TODO : Handle Edifice export in Atlas Box
+                                -- printToAll("edifice: " .. childObject.CardID)
+                                local cardId = tonumber(childObject.CardID)
+                                local deckNumber = math.floor(cardId / 100)
+                                -- printToAll("deckNumber: " .. deckNumber .. " " .. edificeDeckLookup[deckNumber])
+                                if edificeDeckLookup[deckNumber] then
+                                    -- printToAll(edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)
+                                    sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                                    mult = mult * 1000
+                                end
                             end
                             if objectType == tags.relic then
+                                -- printToAll("relic: " .. childObject.CardID)
                                 local cardId = tonumber(childObject.CardID)
-                                stringSoFar = stringSoFar .. oEncode2D(relicIndex.cards[(cardId % 100)].id)
+                                    sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
+                                    mult = mult * 1000
                             end
                             if objectType == tags.card then
+                                -- printToAll("card: " .. childObject.CardID)
                                 local cardId = tonumber(childObject.CardID)
                                 local deckNumber = math.floor(cardId / 100)
                                 if deckLookup[deckNumber] then
-                                    stringSoFar = stringSoFar .. oEncode2D(cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)
+                                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                                    mult = mult * 1000
                                 end
                             end
                         end
                     end
                 end
-                stringSoFar = stringSoFar .. "#"
+                stringSoFar = stringSoFar .. oEncode(sum) .. "#"
             end
+            stringSoFar = stringSoFar .. ">"
             printToAll(stringSoFar) -- TODO: Remove this debug print
+            nextStep()
         end
-    elseif currentStep == "World" then
+    end
+    if currentStep == "World" then
         printToAll("Backing up Empire data...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "World Deck" then
-        printToAll("Backing up World Deck...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "Relic Deck" then
-        printToAll("Backing up Relic Deck...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "Foundations" then
+        printToAll("TODO", hexToColor("#1ccb42"))
+        nextStep()
+    end
+    if currentStep == "World Deck" then
+        updateButton()
+        printToAll("Place the World Deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+    end
+    if currentStep == "Relic Deck" then
+        updateButton()
+        printToAll("Place the Relic Deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+    end
+    if currentStep == "Dispos" then
+        updateButton()
+        printToAll("Place the Dispossessed deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+    end
+    if currentStep == "Reliquary" then
+        updateButton()
+        printToAll("Place the Reliquary (as a Deck if more than one) in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+    end
+    if currentStep == "Foundations" then
         printToAll("Backing up current Foundations...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "Dispos" then
-        printToAll("Place the dispossessed in the box on the desk...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "Players" then
+    end
+    if currentStep == "Players" then
         printToAll("Unlock the Player Archive in the bottom left corner (L key as the Host).\n Place the bag in the box on the desk...\n===========",  hexToColor("#e7ce87"))
-    elseif currentStep == "Reliquary" then
-        printToAll("Place the Reliquary in the box on the desk...\n===========",  hexToColor("#e7ce87"))
     end
 
+end
+
+function onObjectEnterContainer(container, object)
+    if container == self then
+        if currentStep == "World Deck" then
+            printToAll("Backing up World Deck...\n===========",  hexToColor("#e7ce87"))
+            local mult = 1
+            local sum = 0
+            for _, cardObject in ipairs(object.getData().ContainedObjects) do
+                local cardId = tonumber(cardObject.CardID)
+                local deckNumber = math.floor(cardId / 100)
+                if deckLookup[deckNumber] then
+                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                    mult = mult * 1000
+                end
+            end
+            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            printToAll(stringSoFar)
+            nextStep()
+            advanceExportSteps()
+            return
+        end
+        if currentStep == "Relic Deck" then
+            printToAll("Backing up Relic Deck...\n===========",  hexToColor("#e7ce87"))
+            local mult = 1
+            local sum = 0
+            for _, cardObject in ipairs(object.getData().ContainedObjects) do
+                local cardId = tonumber(cardObject.CardID)
+                if relicIndex.cards[cardId % 100] ~= null then
+                    sum = sum + (relicIndex.cards[cardId % 100].id-400)*mult
+                    mult = mult * 100
+                end
+            end
+            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            printToAll(stringSoFar)
+            nextStep()
+            advanceExportSteps()
+            return
+        end
+        if currentStep == "Dispos" then
+            printToAll("Backing up Dispossessed...\n===========",  hexToColor("#e7ce87"))
+            local mult = 1
+            local sum = 0
+            for _, cardObject in ipairs(object.getData().ContainedObjects) do
+                local cardId = tonumber(cardObject.CardID)
+                local deckNumber = math.floor(cardId / 100)
+                if deckLookup[deckNumber] then
+                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                    mult = mult * 1000
+                end
+            end
+            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            printToAll(stringSoFar)
+            nextStep()
+            advanceExportSteps()
+            return
+        end
+    end
+end
+
+function nextStep() 
     for i, step in ipairs(steps) do
         if step == currentStep then
             if i < #steps then
@@ -122,6 +216,9 @@ function advanceExportSteps()
             break
         end
     end
+end
+
+function updateButton() 
     self.removeButton(0)
     self.createButton(getButton())
 end
@@ -145,9 +242,9 @@ function getButton()
     if currentStep == "PreInit" then
         b.label = "Start\nChronicle\nExport"
     elseif currentStep == "Init" then
-        b.label = "OK"
+        b.label = "Ok"
     elseif currentStep == "Atlas Box" then  
-        b.label = "Atlas Box"      
+        b.label = "Ready"      
     -- elseif currentStep == "World" then        
     -- elseif currentStep == "World Deck" then        
     -- elseif currentStep == "Relic Deck" then        
