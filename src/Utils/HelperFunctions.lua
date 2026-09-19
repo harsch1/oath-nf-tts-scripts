@@ -124,3 +124,8 @@ function oDecode(data)
     end
     return result
 end
+
+function padEncode(n, width)
+    local s = oEncode(n)
+    return string.rep("0", width - #s) .. s
+end

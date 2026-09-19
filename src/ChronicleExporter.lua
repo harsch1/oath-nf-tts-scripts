@@ -26,7 +26,7 @@ function onLoad(state)
             stringSoFar = ""
         end
     end
-    self.createButton(getButton())
+    makeButton()
 end
 
 function onSave()
@@ -117,9 +117,84 @@ function advanceExportSteps()
         end
     end
     if currentStep == "World" then
+        errors = 0
         printToAll("Backing up Empire data...\n===========",  hexToColor("#e7ce87"))
-        printToAll("TODO", hexToColor("#1ccb42"))
-        nextStep()
+
+        function processWorldObjects(objects)
+            for _, object in ipairs(objects) do
+                local mult = 100
+                local sum = 0
+                local isEmpty = true
+                for _, hitItem in ipairs(object) do
+                    if hitItem.hasTag(tags.site) then
+                        sum = siteIndex[hitItem.getName()]
+                        isEmpty = false
+                        break
+                    end
+                end
+                if not isEmpty then
+                    for _, hitItem in ipairs(object) do
+                        if hitItem.hasTag(tags.edifice) then
+                            printToAll("edifice: " .. hitItem.getData().CardID)
+                            local cardId = tonumber(hitItem.getData().CardID)
+                            local deckNumber = math.floor(cardId / 100)
+                            -- printToAll("deckNumber: " .. deckNumber .. " " .. edificeDeckLookup[deckNumber])
+                            if edificeDeckLookup[deckNumber] then
+                                -- printToAll(edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)
+                                sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                                mult = mult * 1000
+                            end
+                        end
+                        if hitItem.hasTag(tags.relic) then
+                            printToAll("relic: " .. hitItem.getData().CardID)
+                            local cardId = tonumber(hitItem.getData().CardID)
+                                sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
+                                mult = mult * 1000
+                        end
+                        if hitItem.hasTag(tags.card) then
+                            printToAll("card: " .. hitItem.getData().CardID)
+                            local cardId = tonumber(hitItem.getData().CardID)
+                            local deckNumber = math.floor(cardId / 100)
+                            if deckLookup[deckNumber] then
+                                sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                                mult = mult * 1000
+                            end
+                        end
+                    end
+                    stringSoFar = stringSoFar .. oEncode(sum) .. "#"
+                end
+            end
+            stringSoFar = stringSoFar .. ">"
+            printToAll(stringSoFar)
+            
+            nextStep()
+            updateButton()
+        end
+
+        local objects = {}
+        local mapTransform = {position = getObjectFromGUID("d5dacf").getPosition(), rotation = getObjectFromGUID("d5dacf").getRotation()}
+        for i = 1, 8, 1 do
+            local zone = spawnObject({
+                type = "FogOfWarTrigger",
+                position = vectorSum(getTransformStruct("site", i, mapTransform).position, vector(5.65, 0, 0)),
+                scale = vector(19.5,2,5.4),
+                sound = false,
+                callback_function = function(createdZone)
+                    createdZone.memo = "trigger"
+                    Wait.time(function()
+                        local hitObjects = createdZone.getObjects(true)
+                        objects[i] = hitObjects
+                        if i == 8 then
+                            processWorldObjects(objects)
+                        end
+                        Wait.time(function ()
+                            destroyObject(createdZone)
+                        end, 0.2)
+                    end, 0.1)
+                end
+            })
+        end
+        return
     end
     if currentStep == "World Deck" then
         updateButton()
@@ -152,15 +227,27 @@ function onObjectEnterContainer(container, object)
             printToAll("Backing up World Deck...\n===========",  hexToColor("#e7ce87"))
             local mult = 1
             local sum = 0
+            local worldDeckString = ""
+            local count = 0
             for _, cardObject in ipairs(object.getData().ContainedObjects) do
                 local cardId = tonumber(cardObject.CardID)
                 local deckNumber = math.floor(cardId / 100)
                 if deckLookup[deckNumber] then
                     sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                    mult = mult * 1000
+                    mult = mult * 400
+                    count = count + 1
+                    if count == 5 then
+                        worldDeckString = padEncode(sum, 7) .. worldDeckString
+                        mult = 1
+                        sum = 0
+                        count = 0
+                    end
                 end
             end
-            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            if sum > 0 then
+                worldDeckString = padEncode(sum, 7) .. worldDeckString
+            end
+            stringSoFar = stringSoFar ..worldDeckString.. ">"
             printToAll(stringSoFar)
             nextStep()
             advanceExportSteps()
@@ -170,14 +257,26 @@ function onObjectEnterContainer(container, object)
             printToAll("Backing up Relic Deck...\n===========",  hexToColor("#e7ce87"))
             local mult = 1
             local sum = 0
+            local relicString = ""
+            local count = 0
             for _, cardObject in ipairs(object.getData().ContainedObjects) do
                 local cardId = tonumber(cardObject.CardID)
                 if relicIndex.cards[cardId % 100] ~= null then
-                    sum = sum + (relicIndex.cards[cardId % 100].id-400)*mult
+                    sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
                     mult = mult * 100
+                    count = count + 1
+                    if count == 5 then
+                        relicString = padEncode(sum, 7) .. relicString
+                        mult = 1
+                        sum = 0
+                        count = 0
+                    end
                 end
             end
-            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            if sum > 0 then
+                relicString = padEncode(sum, 7) .. relicString
+            end
+            stringSoFar = stringSoFar .. relicString .. ">"
             printToAll(stringSoFar)
             nextStep()
             advanceExportSteps()
@@ -187,15 +286,27 @@ function onObjectEnterContainer(container, object)
             printToAll("Backing up Dispossessed...\n===========",  hexToColor("#e7ce87"))
             local mult = 1
             local sum = 0
+            local disposString = ""
+            local count = 0
             for _, cardObject in ipairs(object.getData().ContainedObjects) do
                 local cardId = tonumber(cardObject.CardID)
                 local deckNumber = math.floor(cardId / 100)
                 if deckLookup[deckNumber] then
                     sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                    mult = mult * 1000
+                    mult = mult * 400
+                    count = count + 1
+                    if count == 5 then
+                        disposString = padEncode(sum, 7) .. disposString
+                        mult = 1
+                        sum = 0
+                        count = 0
+                    end
                 end
             end
-            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            if sum > 0 then
+                disposString = padEncode(sum, 7) .. disposString
+            end
+            stringSoFar = stringSoFar ..disposString.. ">"
             printToAll(stringSoFar)
             nextStep()
             advanceExportSteps()
@@ -220,13 +331,14 @@ end
 
 function updateButton() 
     self.removeButton(0)
-    self.createButton(getButton())
+    self.removeButton(0)
+    makeButton()
 end
 
 function outputString()
 end
 
-function getButton()
+function makeButton()
     local b =  {
         click_function = "advanceExportSteps",
         function_owner = self,
@@ -237,7 +349,7 @@ function getButton()
         font_size      = 110,
         color          = hexToColor("#97753b"),
         font_color     = {1, 1, 1, 1},
-        tooltip        = "Chornicle Exporter", 
+        tooltip        = "Chronicle Exporter", 
     }
     if currentStep == "PreInit" then
         b.label = "Start\nChronicle\nExport"
@@ -248,14 +360,31 @@ function getButton()
     -- elseif currentStep == "World" then        
     -- elseif currentStep == "World Deck" then        
     -- elseif currentStep == "Relic Deck" then        
-    -- elseif currentStep == "Foundations" then        
-    -- elseif currentStep == "Dispos" then        
+    -- elseif currentStep == "Dispos" then       
+    elseif currentStep == "Reliquary" then
+        b.label = "Current Step:\n" .. currentStep
+        b.width = 650
+        b.position = {-0.150, -0.4, 1.2}
+        local b2 =  {
+            click_function = "skipStep",
+            function_owner = self,
+            label          = ">",
+            position       = {0.650, -0.4, 1.2},
+            width          = 100,
+            height         = 500,
+            font_size      = 110,
+            color          = hexToColor("#8c2b29"),
+            font_color     = {1, 1, 1, 1},
+            tooltip        = "Skip", 
+        }
+        self.createButton(b2)
+
+    -- elseif currentStep == "Foundations" then       
     -- elseif currentStep == "Players" then        
-    -- elseif currentStep == "Reliquary" then    
     else
         b.label = "Current Step:\n" .. currentStep
     end
-    return b
+    self.createButton(b)
 end
 
 function showExportString(displayString)
