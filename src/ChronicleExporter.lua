@@ -7,8 +7,8 @@ require("src/Config/CardMapping")
 local steps = {"PreInit","Init", "Atlas Box", "World", "World Deck", "Relic Deck", "Dispos", "Reliquary", "Foundations", "Players"}
 
 currentStep = ""
+local version = 1
 stringSoFar = ""
-
 
 function onLoad(state)
     if state ~= null then
@@ -307,7 +307,7 @@ function onObjectEnterContainer(container, object)
                 disposString = padEncode(sum, 7) .. disposString
             end
             stringSoFar = stringSoFar ..disposString.. ">"
-            printToAll(stringSoFar)
+            printToAll(scramble(stringSoFar))
             nextStep()
             advanceExportSteps()
             return
@@ -321,7 +321,7 @@ function nextStep()
             if i < #steps then
                 currentStep = steps[i + 1]
             else -- TODO: Finish the export process and show the actual final export string
-                showExportString("test_export")
+                showExportString(scramble(stringSoFar))
                 currentStep = "PreInit"
             end
             break

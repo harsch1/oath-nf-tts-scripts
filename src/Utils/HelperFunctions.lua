@@ -77,48 +77,44 @@ end
 
 
 -- Get transform for a given tag and index
-    -- Requires GeneralConfig
-    function getTransformStruct(tag, index, baseTransform)
-        return {
-            position = vectorSum(
-                pos[tag](index or 1), 
-                (baseTransform and baseTransform.position or {x=0,y=0,z=0})
-            ),
-            rotation = rot[tag],
-        }
-    end
+-- Requires GeneralConfig
+function getTransformStruct(tag, index, baseTransform)
+    return {
+        position = vectorSum(
+            pos[tag](index or 1), 
+            (baseTransform and baseTransform.position or {x=0,y=0,z=0})
+        ),
+        rotation = rot[tag],
+    }
+end
 
-        local b = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/!~$%^&(){}";:,.?'
+local base82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/!~$%^&(){}";:,.?'
+local base82Plus = base82 .. "#>" --With seperators
+local encodingVersion = 1
 
+-- Encodes a number into "Base82" with the above string as a list of all digits
 function oEncode(data)
-    -- print(data)
     assert(type(data) == 'number' and data >= 0 and data % 1 == 0,
         'encode expects a non-negative integer')
-    if data == 0 then return b:sub(1, 1) end
+    if data == 0 then return base82:sub(1, 1) end
 
     local result = ''
     while data > 0 do
         local remainder = data % 82
-        result = b:sub(remainder + 1, remainder + 1) .. result
+        -- Get the nth character (+1 because lua starts index at 1)
+        result = base82:sub(remainder + 1, remainder + 1) .. result
         data = math.floor(data / 82)
     end
     return result
 end
 
-function oEncode2D(data)
-    local result = oEncode(data)
-    if #result == 1 then
-        result = "0" .. result
-    end
-    return result
-end
-
+-- Decodes a string from "Base82" back into a number
 function oDecode(data)
     assert(type(data) == 'string' and data ~= '',
         'decode expects a non-empty base64 string')
     local result = 0
     for i = 1, #data do
-        local value = b:find(data:sub(i, i), 1, true)
+        local value = base82:find(data:sub(i, i), 1, true)
         assert(value, 'decode received an invalid string')
         result = result * 82 + value - 1
     end
@@ -128,4 +124,50 @@ end
 function padEncode(n, width)
     local s = oEncode(n)
     return string.rep("0", width - #s) .. s
+end
+
+function oEncode2D(data)
+    return padEncode(data, 2)
+end
+
+function scramble(s, isDecoding)
+    local n = #base82Plus
+    local seed = 468529063 -- preselected numeric seed
+    local result = ""
+    local input = s
+    if isDecoding then
+        input = input:gsub("%s", "") --Remove whitespace
+        assert(input:sub(1,2) == oEncode2D(encodingVersion), 'this export string uses the wrong encoding version')
+        input = sub(3,-3) -- Remove first and last 2 characters (version number and checksum)
+    end
+    for i = 1, #input do --For each 'digit' in our data string
+        seed = (seed * 16807) % 2147483647 --Pseudo-random shift as we walk through: (multiplier 7^5, modulus 2^31 - 1).
+        assert(base82Plus:find(input:sub(i, i), 1, true), "scramble: invalid character in string")
+        local idx = base82Plus:find(input:sub(i, i), 1, true) - 1 --Find the index of current digit in our alphabet
+        
+        if not isDecoding then
+            local v = (idx + seed) % n --Shift digit forward using our seed
+            result = result .. base82Plus:sub(v + 1, v + 1) --Write the digit
+            seed = (seed + idx) % 2147483647 --Modify our seed by the index of the digit
+        else
+            local realIdx = (idx - seed) % n --Shift digit back using our seed to get the original digit
+            result = result .. base82Plus:sub(realIdx + 1, realIdx + 1) --Write the digit
+            seed = (seed + realIdx) % 2147483647 --Modify our seed by the original digit
+        end
+    end
+    if not isDecoding then
+        result = oEncode2D(encodingVersion) .. result .. oEncode2D(checksum(input))
+    else
+        local check = s:gsub("%s", ""):sub(-2)
+        assert(check == oEncode2D(checksum(result)), 'Checksum failure, message is likely corrupted')
+    end
+    return result
+end
+
+function checksum(s)
+    local sum = 0
+    for i = 1, #s do
+        sum = (sum + i * (base82Plus:find(s:sub(i, i), 1, true) - 1)) % 6724  -- 82^2
+    end
+    return sum
 end
