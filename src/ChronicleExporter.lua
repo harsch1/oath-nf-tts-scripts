@@ -4,14 +4,14 @@ require("src/Config/GeneralConfig")
 require("src/Config/CardMapping")
 
 
-local steps = {"PreInit","Init", "Atlas Box", "World", "World Deck", "Relic Deck", "Dispos", "Reliquary", "Foundations", "Players"}
+local steps = {"PreInit","Init", "Atlas Box", "World", "World Deck", "Relic Deck", "Dispossessed", "Reliquary", "Foundations", "Players"}
 
 currentStep = ""
 local version = 1
 stringSoFar = ""
 
 function onLoad(state)
-    if state ~= null then
+    if state ~= nil then
         local loadedData = JSON.decode(state)
         if loadedData then
             if loadedData.currentStep then -- TODO: revert to proper save/load
@@ -49,7 +49,7 @@ function advanceExportSteps()
         return
     end    
     if currentStep == "Init" then
-        printToAll("Ensure the map is cleaned up except for the current Empire and that all Foundations are correctly flipped.==",  hexToColor("#e7ce87"))  
+        printToAll("Ensure the map is cleaned up except for the current Empire and that all Foundations are correctly flipped.",  hexToColor("#e7ce87"))  
         printToAll("Click Ready when you're ready for the next step\n===========",  hexToColor("#e7ce87"))
         nextStep()
         updateButton()
@@ -58,7 +58,7 @@ function advanceExportSteps()
         
 
     if currentStep == "Atlas Box" then
-        if getObjectFromGUID(GUIDs.atlasBox) == null then
+        if getObjectFromGUID(GUIDs.atlasBox) == nil then
             printToAll("Atlas Box not found! Please ensure the Atlas Box is on the table and try again.\n===========",  hexToColor("#e7ce87"))
             return
         else
@@ -112,7 +112,6 @@ function advanceExportSteps()
                 stringSoFar = stringSoFar .. oEncode(sum) .. "#"
             end
             stringSoFar = stringSoFar .. ">"
-            printToAll(stringSoFar) -- TODO: Remove this debug print
             nextStep()
         end
     end
@@ -165,7 +164,6 @@ function advanceExportSteps()
                 end
             end
             stringSoFar = stringSoFar .. ">"
-            printToAll(stringSoFar)
             
             nextStep()
             updateButton()
@@ -199,26 +197,46 @@ function advanceExportSteps()
     if currentStep == "World Deck" then
         updateButton()
         printToAll("Place the World Deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        -- onObjectEnter to continue
     end
     if currentStep == "Relic Deck" then
         updateButton()
         printToAll("Place the Relic Deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        -- onObjectEnter to continue
     end
-    if currentStep == "Dispos" then
+    if currentStep == "Dispossessed" then
         updateButton()
         printToAll("Place the Dispossessed deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        -- onObjectEnter to continue
     end
     if currentStep == "Reliquary" then
         updateButton()
         printToAll("Place the Reliquary (as a Deck if more than one) in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        printToAll("If there is none, click to skip \n===========",  hexToColor("#e7ce87"))
+        -- onObjectEnter to continue
     end
     if currentStep == "Foundations" then
+        updateButton()
         printToAll("Backing up current Foundations...\n===========",  hexToColor("#e7ce87"))
+        local sum = 0
+        for i, foundation in ipairs(GUIDs.foundations) do
+            local foundationCard = getObjectFromGUID(foundation.GUID)
+            if foundationCard == nil then
+                printToAll("Could not find " .. foundation.name .. ". Make sure it's present on the table and not in a deck.", hexToColor("#ce2d2d"))
+                return
+            end
+            if roundToNearest180(foundationCard.getRotation().z) == 180 then
+                sum = sum + 2^(i-1)
+            end
+        end
+        stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+        nextStep()
     end
     if currentStep == "Players" then
-        printToAll("Unlock the Player Archive in the bottom left corner (L key as the Host).\n Place the bag in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        updateButton()
+        printToAll("Archive all Players.\n Then, unlock the Player Archive in the bottom left corner (L key as the Host)." ..
+                   "\n Place the bag in the box on the desk...\n===========",  hexToColor("#e7ce87"))
     end
-
 end
 
 function onObjectEnterContainer(container, object)
@@ -248,8 +266,8 @@ function onObjectEnterContainer(container, object)
                 worldDeckString = padEncode(sum, 7) .. worldDeckString
             end
             stringSoFar = stringSoFar ..worldDeckString.. ">"
-            printToAll(stringSoFar)
             nextStep()
+            -- updateButton()
             advanceExportSteps()
             return
         end
@@ -261,7 +279,7 @@ function onObjectEnterContainer(container, object)
             local count = 0
             for _, cardObject in ipairs(object.getData().ContainedObjects) do
                 local cardId = tonumber(cardObject.CardID)
-                if relicIndex.cards[cardId % 100] ~= null then
+                if relicIndex.cards[cardId % 100] ~= nil then
                     sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
                     mult = mult * 100
                     count = count + 1
@@ -277,12 +295,11 @@ function onObjectEnterContainer(container, object)
                 relicString = padEncode(sum, 7) .. relicString
             end
             stringSoFar = stringSoFar .. relicString .. ">"
-            printToAll(stringSoFar)
             nextStep()
             advanceExportSteps()
             return
         end
-        if currentStep == "Dispos" then
+        if currentStep == "Dispossessed" then
             printToAll("Backing up Dispossessed...\n===========",  hexToColor("#e7ce87"))
             local mult = 1
             local sum = 0
@@ -307,10 +324,165 @@ function onObjectEnterContainer(container, object)
                 disposString = padEncode(sum, 7) .. disposString
             end
             stringSoFar = stringSoFar ..disposString.. ">"
-            printToAll(scramble(stringSoFar))
             nextStep()
             advanceExportSteps()
             return
+        end
+        if currentStep == "Reliquary" then
+            printToAll("Backing up Reliquary...\n===========",  hexToColor("#e7ce87"))
+            local mult = 1
+            local sum = 0
+            local count = 0
+            if object.getData().ContainedObjects ~= nil then
+                for _, cardObject in ipairs(object.getData().ContainedObjects) do
+                    local cardId = tonumber(cardObject.CardID)
+                    sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
+                    mult = mult * 100
+                    count = count + 1
+                end
+            elseif object.getData().CardID ~= nil then
+                local cardId = tonumber(object.getData().CardID)
+                sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
+            end
+            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            nextStep()
+            advanceExportSteps()
+            return
+        end
+        if currentStep == "Players" then
+            local playerBoards = {
+                    {color = "Red", order=1},
+                    {color = "Blue", order=2},
+                    {color = "White", order=5},
+                    {color = "Yellow", order=3},
+                    {color = "Black", order=4},
+                    {color = "Brown", order=6},
+                    {color = "Pink", order=7},
+            }
+            if object.getData().ContainedObjects ~= nil then
+                local players = {}
+                for _, archivedPlayer in ipairs(object.getData().ContainedObjects) do
+                    players[playerBoards[JSON.decode(archivedPlayer.Memo).hotkey].order] = archivedPlayer
+                end
+                for i = 1, 7 do
+                    local player = players[i]
+                    local playerString = ""
+                    if player == nil then
+                        playerString = "0##"
+                    else
+                        local status = "Exile"
+                        local cardIDs = {}
+                        local relicIDs = {}
+                        local legacies = {}
+                        for _, attachment in ipairs(player.ChildObjects) do
+                            if attachment.Name == "Card" then
+                                local deckNumber = math.floor(tonumber(attachment.CardID) / 100)
+                                local cardNumber = tonumber(attachment.CardID) % 100
+                                if cardNumber == 0 and attachment.CustomDeck[deckNumber].FaceURL == "https://dl.dropboxusercontent.com/scl/fi/8z39ph40afhr4zv1z5n1j/player.jpg?rlkey=56pylu5somf5lporrtegdldr9&dl=0" then
+                                    status = "Chancellor"
+                                elseif attachment.CustomDeck[deckNumber].FaceURL == "https://dl.dropboxusercontent.com/scl/fi/whwjimllmyaim9fcs4276/player2.jpg?rlkey=5wsqhp7b8lavz9hxf9uh95ndq&dl=0" then
+                                    status = "Citizen"
+                                elseif attachment.CustomDeck[deckNumber].FaceURL == "https://dl.dropboxusercontent.com/scl/fi/07eglj8gu44allbbywycx/legacy.jpg?rlkey=rrseahcgk1ii2nksch45rjklr&dl=0" then
+                                    table.insert(legacies, attachment)
+                                elseif attachment.Tags then
+                                    local objectType = ""
+                                    for _, tag in ipairs(attachment.Tags) do
+                                        objectType = ({
+                                            [tags.relic] = tags.relic,
+                                            [tags.card] = tags.card,
+                                        })[tag] or objectType
+                                    end
+                                    if objectType == tags.relic then
+                                        table.insert(relicIDs, cardNumber)
+                                    end
+                                    if objectType == tags.card then
+                                        table.insert(cardIDs, attachment.CardID)
+                                    end
+                                end
+                            end
+                        end
+                        
+                        local statusNum = ({
+                            ["Exile"] = 0,
+                            ["Citizen"] = 1,
+                            ["Chancellor"] = 2
+                        })[status]
+                        playerString = playerString .. oEncode(statusNum)
+
+                        local mult = 1
+                        local sum = 0
+                        local count = 0
+                        for _, cardId in ipairs(cardIDs) do
+                            local deckNumber = math.floor(cardId / 100)
+                            if deckLookup[deckNumber] then
+                                sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                                mult = mult * 400
+                                count = count + 1
+                            end
+                        end
+                        if sum > 0 then
+                            playerString = playerString .. oEncode(sum) .. "#"
+                        else
+                            playerString = playerString .. "#" 
+                        end
+
+                        local mult = 1
+                        local sum = 0
+                        local count = 0
+                        local playerlegacyString = ""
+                        for _, legacy in ipairs(legacies) do
+                            local legacyID = tonumber(legacy.CardID) % 100
+                            local isDormant = (roundToNearest180(legacy.Transform.rotZ) == 180)
+                            if legacyIndex.cards[legacyID] ~= nil then
+                                sum = sum + (legacyIndex.cards[legacyID].id)*mult
+                                if isDormant then sum = sum + 100*mult end
+                                mult = mult * 200
+                                count = count + 1
+                                if count == 5 then
+                                    playerlegacyString = padEncode(sum, 7) .. playerlegacyString
+                                    mult = 1
+                                    sum = 0
+                                    count = 0
+                                end
+                            end
+                        end
+                        if #playerlegacyString == 0 then
+                            if sum > 0 then
+                                playerString = playerString .. oEncode(sum) .. "#"
+                            else 
+                                playerString = playerString .. "#"
+                            end
+                        else
+                            if sum > 0 then
+                                playerlegacyString = padEncode(sum, 7) .. playerlegacyString
+                            end
+                            playerString = playerString .. playerlegacyString .. "#"
+                        end
+
+                        local mult = 1
+                        local sum = 0
+                        local count = 0
+                        for _, relicID in ipairs(relicIDs) do
+                            if relicIndex.cards[relicID] ~= nil then
+                                sum = sum + (relicIndex.cards[relicID].relicId)*mult
+                                mult = mult * 100
+                                count = count + 1
+                            end
+                        end
+                        if sum > 0 then
+                            playerString = playerString .. oEncode(sum)
+                        end
+                    end
+                    if i == 7 then
+                        stringSoFar = stringSoFar .. playerString
+                    else
+                        stringSoFar = stringSoFar .. playerString .. ">"
+                    end
+                end
+            end
+            printToAll(scramble(stringSoFar))
+            nextStep()
+
         end
     end
 end
@@ -330,12 +502,19 @@ function nextStep()
 end
 
 function updateButton() 
-    self.removeButton(0)
-    self.removeButton(0)
+    for _, button in ipairs(self.getButtons()) do
+        self.removeButton(button.index)
+    end
     makeButton()
 end
 
 function outputString()
+end
+
+function skipReliquary()
+    stringSoFar = stringSoFar .. ">"
+    nextStep()
+    advanceExportSteps()
 end
 
 function makeButton()
@@ -360,13 +539,13 @@ function makeButton()
     -- elseif currentStep == "World" then        
     -- elseif currentStep == "World Deck" then        
     -- elseif currentStep == "Relic Deck" then        
-    -- elseif currentStep == "Dispos" then       
+    -- elseif currentStep == "Dispossessed" then       
     elseif currentStep == "Reliquary" then
         b.label = "Current Step:\n" .. currentStep
         b.width = 650
         b.position = {-0.150, -0.4, 1.2}
         local b2 =  {
-            click_function = "skipStep",
+            click_function = "skipReliquary",
             function_owner = self,
             label          = ">",
             position       = {0.650, -0.4, 1.2},

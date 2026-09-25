@@ -5,17 +5,22 @@
 // Card, relic, edifice and site names live in the MAPPING object below.
 //
 //   node chronicle-codec.js decode <export string | ->      export string -> JSON on stdout
+//   node chronicle-codec.js inspect <export string | ->     readable breakdown of every section, for validation
 //   node chronicle-codec.js encode <file.json | ->          JSON -> export string on stdout
 //   node chronicle-codec.js selftest
 //   Add --plain to skip the version/scramble/checksum wrapper (the raw string the exporter builds before scrambling)
 //
-// Also usable as a module: decodeExportString, encodeExportObject, decodeChronicle, encodeChronicle
+//   Pass export strings in single quotes: '02H3uk...' (' is not in the alphabet, so nothing inside needs escaping).
+//   Double quotes corrupt them, since $ starts a variable in PowerShell and bash. Or pipe it in: Get-Clipboard | node chronicle-codec.js inspect -
+//
+// Also usable as a module: decodeExportString, encodeExportObject, decodeChronicle, encodeChronicle, inspectExportString
 
 const fs = require('fs');
 
-const ENCODING_VERSION = 1;
+const ENCODING_VERSION = 2;
 const SCRAMBLE_SEED = 468529063; // Random seed for scrambling world output to make it less readable
-const BASE82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/!~$%^&(){}";:,.?'; // Our 'Base82 alphabet
+// Our 'Base82' alphabet. Printable ASCII minus ' \ ` * _ | [ ] < and ", so it is safe to use in most places
+const BASE82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?';
 const BASE82_PLUS = BASE82 + '#>'; //Base82 with the structural characters
 const CHECKSUM_MODULUS = 82 * 82;
 const DECK_RADIX = 400;   // World Deck and Dispossessed: card ids
@@ -116,7 +121,14 @@ function loadMapping() {
         siteNameToId.set(name, id);
     }
 
-    cachedData = { idToName, nameToId, siteIdToName, siteNameToId };
+    const legacyIdToName = new Map();
+    const legacyNameToId = new Map();
+    for (const [id, name] of Object.entries(MAPPING.legacies)) {
+        legacyIdToName.set(Number(id), name);
+        legacyNameToId.set(name, Number(id));
+    }
+
+    cachedData = { idToName, nameToId, siteIdToName, siteNameToId, legacyIdToName, legacyNameToId };
     return cachedData;
 }
 
@@ -236,14 +248,127 @@ const decodeRelicDeck = section => {
     return unpackIds(section, RELIC_RADIX).map(id => lookup(data.idToName, id + RELIC_ID_OFFSET, 'relic id'));
 };
 
-// ---------- sections the exporter does not write yet ----------
-// TODO: Reliquary. Decode the raw section into relic names (and encode it back)
-// TODO: Foundations. Decode the raw section into the current Foundations (and encode it back)
-// TODO: Players. Decode each player's raw section into player data (and encode it back)
-// Until those exist their sections are carried through as raw strings so nothing is lost on a round trip
+// ---------- small lists (Reliquary, player cards, player relics) ----------
+// Every id is packed into one unpadded number. Holds at most 6 cards/legacies or 7 relics
 
-const decodeRaw = section => ({ raw: section });
-const encodeRaw = value => value.raw;
+function packNumber(ids, radix) {
+    let n = 0;
+    let mult = 1;
+    for (const id of ids) {
+        if (id < 1 || id >= radix) throw new Error(`Id ${id} does not fit in radix ${radix}`);
+        n += id * mult;
+        mult *= radix;
+    }
+    return n === 0 ? '' : toBase82(n); // toBase82 throws if the list is too long to be exact
+}
+
+function unpackNumber(text, radix) {
+    let n = text === '' ? 0 : fromBase82(text);
+    const ids = [];
+    while (n > 0) {
+        ids.push(n % radix);
+        n = Math.floor(n / radix);
+    }
+    return ids;
+}
+
+const relicIdOf = (data, name) => {
+    const id = lookup(data.nameToId, name, 'relic');
+    if (!isRelicId(id)) throw new Error(`${name} is not a relic`);
+    return id - RELIC_ID_OFFSET;
+};
+const relicNameOf = (data, id) => lookup(data.idToName, id + RELIC_ID_OFFSET, 'relic id');
+
+// ---------- Reliquary ----------
+// A list of relics as one number. Skipping the step writes an empty section and an empty Reliquary writes '0', both read as []
+
+function encodeReliquary(names) {
+    const data = loadMapping();
+    return packNumber(names.map(name => relicIdOf(data, name)), RELIC_RADIX);
+}
+
+function decodeReliquary(section) {
+    const data = loadMapping();
+    return unpackNumber(section, RELIC_RADIX).map(id => relicNameOf(data, id));
+}
+
+// ---------- Foundations ----------
+// A bitmask of the flipped Foundations: Foundation I is 1, II is 2, III is 4 and so on
+
+function encodeFoundations(names) {
+    let mask = 0;
+    for (const name of names) {
+        const bit = MAPPING.foundations.indexOf(name);
+        if (bit < 0) throw new Error(`Unknown Foundation: ${name}`);
+        mask |= 1 << bit;
+    }
+    return toBase82(mask);
+}
+
+function decodeFoundations(section) {
+    const mask = section === '' ? 0 : fromBase82(section);
+    if (mask >= 1 << MAPPING.foundations.length) throw new Error(`Invalid Foundations value: ${section}`);
+    return MAPPING.foundations.filter((_, bit) => mask & (1 << bit));
+}
+
+// ---------- players ----------
+// [status: 1 digit][cards]#[legacies]#[relics]
+// status: 0 Exile, 1 Citizen, 2 Chancellor. Cards and relicsare single numbers.
+// Legacies are id + LEGACY_FLIPPED if flipped, in radix 200. Fewer than CHUNK_SIZE are one unpadded number (at most 5 characters),
+// otherwise they are packed like a deck (a multiple of CHUNK_WIDTH characters), so the length tells the two apart.
+// A player missing from the export is written as an empty Exile, '0##'
+
+const STATUSES = ['Exile', 'Citizen', 'Chancellor'];
+const LEGACY_RADIX = 200;
+const LEGACY_FLIPPED = 100;
+
+function encodeLegacies(legacies) {
+    const data = loadMapping();
+    const values = legacies.map(({ name, flipped }) =>
+        lookup(data.legacyNameToId, name, 'legacy') + (flipped ? LEGACY_FLIPPED : 0));
+    return values.length < CHUNK_SIZE ? packNumber(values, LEGACY_RADIX) : packIds(values, LEGACY_RADIX);
+}
+
+function decodeLegacies(field) {
+    const data = loadMapping();
+    const values = field.length < CHUNK_WIDTH ? unpackNumber(field, LEGACY_RADIX) : unpackIds(field, LEGACY_RADIX);
+    return values.map(value => ({
+        name: lookup(data.legacyIdToName, value % LEGACY_FLIPPED, 'legacy id'),
+        flipped: value > LEGACY_FLIPPED,
+    }));
+}
+
+function encodePlayer({ status = 'Exile', cards = [], legacies = [], relics = [] }) {
+    const data = loadMapping();
+    const statusNum = STATUSES.indexOf(status);
+    if (statusNum < 0) throw new Error(`Unknown player status: ${status}`);
+    const cardIds = cards.map(name => {
+        const id = lookup(data.nameToId, name, 'card');
+        if (!isCardId(id)) throw new Error(`${name} is not a deck card`);
+        return id;
+    });
+    return toBase82(statusNum) + packNumber(cardIds, DECK_RADIX) + '#'
+        + encodeLegacies(legacies) + '#'
+        + packNumber(relics.map(name => relicIdOf(data, name)), RELIC_RADIX);
+}
+
+function decodePlayer(section) {
+    const data = loadMapping();
+    const fields = section.split('#');
+    if (fields.length !== 3) throw new Error(`Player section should have 3 fields, found ${fields.length}: ${section}`);
+    const [head, legacies, relics] = fields;
+    const status = STATUSES[BASE82.indexOf(head[0])];
+    if (!status) throw new Error(`Invalid player status in: ${section}`);
+    return {
+        status,
+        cards: unpackNumber(head.slice(1), DECK_RADIX).map(id => {
+            if (!isCardId(id)) throw new Error(`Id ${id} is not a deck card`);
+            return lookup(data.idToName, id, 'card id');
+        }),
+        legacies: decodeLegacies(legacies),
+        relics: unpackNumber(relics, RELIC_RADIX).map(id => relicNameOf(data, id)),
+    };
+}
 
 // ---------- whole chronicle ----------
 
@@ -253,11 +378,11 @@ const CODECS = {
     worldDeck: { decode: decodeCardDeck, encode: encodeCardDeck },
     relicDeck: { decode: decodeRelicDeck, encode: encodeRelicDeck },
     dispossessed: { decode: decodeCardDeck, encode: encodeCardDeck },
-    reliquary: { decode: decodeRaw, encode: encodeRaw }, // TODO
-    foundations: { decode: decodeRaw, encode: encodeRaw }, // TODO
+    reliquary: { decode: decodeReliquary, encode: encodeReliquary },
+    foundations: { decode: decodeFoundations, encode: encodeFoundations },
 };
 for (const color of PLAYER_COLORS) {
-    CODECS[`players.${color}`] = { decode: decodeRaw, encode: encodeRaw }; // TODO
+    CODECS[`players.${color}`] = { decode: decodePlayer, encode: encodePlayer };
 }
 
 // 'players.red' lives at chronicle.players.red, every other key at chronicle[key]
@@ -317,6 +442,104 @@ function decodeExportString(exportString) {
     return { version: ENCODING_VERSION, ...decodeChronicle(plain) };
 }
 
+// ---------- inspect ----------
+// A readable breakdown of an export string for validation: every section's raw text, split into its tokens/chunks,
+// with the number each one encodes, the ids inside it and their names. Problems are reported inline instead of thrown.
+
+function inspectExportString(exportString, isPlain = false) {
+    const lines = [];
+    let problems = 0;
+    const problem = message => { problems++; return `!! ${message}`; };
+    // Runs fn and returns its text, or the error as a problem line
+    const attempt = fn => { try { return fn(); } catch (err) { return problem(err.message); } };
+
+    let plain = exportString.replace(/\s/g, '');
+    if (!isPlain) {
+        const version = plain.slice(0, 2);
+        const body = plain.slice(2, -2);
+        const check = plain.slice(-2);
+        lines.push(`Version   ${version}` + (version === padEncode(ENCODING_VERSION, 2) ? '' : `  ${problem(`expected ${padEncode(ENCODING_VERSION, 2)}`)}`));
+        plain = attempt(() => scramble(body, true));
+        if (plain.startsWith('!!')) return { text: [...lines, plain].join('\n'), problems };
+        const expected = padEncode(checksum(plain), 2);
+        lines.push(`Checksum  ${check}` + (check === expected ? '  ok' : `  ${problem(`expected ${expected}, the string is corrupted`)}`));
+        lines.push(`Plain     ${plain}`);
+    }
+
+    const data = loadMapping();
+    const idList = (ids, nameOf) => ids.map(id => `${id} ${attempt(() => nameOf(id))}`).join(', ');
+    const cardName = id => { if (!isCardId(id)) throw new Error(`${id} is not a deck card`); return lookup(data.idToName, id, 'card id'); };
+    const relicName = id => relicNameOf(data, id);
+    const legacyName = v => `${lookup(data.legacyIdToName, v % LEGACY_FLIPPED, 'legacy id')}${v > LEGACY_FLIPPED ? ' (flipped)' : ''}`;
+    const row = (raw, value, detail) => `    ${raw.padEnd(CHUNK_WIDTH)} = ${String(value).padEnd(14)} ${detail}`;
+    const single = (label, raw, radix, nameOf) => raw === ''
+        ? `  ${label}(none)`
+        : attempt(() => { const n = fromBase82(raw); return `  ${label}${row(raw, n, idList(unpackNumber(raw, radix), nameOf)).trimStart()}`; });
+    const chunked = (raw, radix, nameOf) => {
+        if (raw.length % CHUNK_WIDTH !== 0) return [`    ${problem(`length ${raw.length} is not a multiple of ${CHUNK_WIDTH}`)}`];
+        const chunks = [];
+        for (let i = raw.length - CHUNK_WIDTH; i >= 0; i -= CHUNK_WIDTH) chunks.push(raw.slice(i, i + CHUNK_WIDTH)); // first chunk is rightmost
+        return chunks.map(chunk => attempt(() => row(chunk, fromBase82(chunk), idList(unpackIds(chunk, radix), nameOf))));
+    };
+
+    const sections = plain.split('>');
+    if (sections.length > SECTIONS.length) lines.push(problem(`expected at most ${SECTIONS.length} sections, found ${sections.length}`));
+    sections.forEach((raw, i) => {
+        const key = SECTIONS[i] || `extra${i + 1}`;
+        lines.push('', `[${i + 1}] ${key}  (${raw.length} chars)  ${raw}`);
+        if (key === 'atlasBox' || key === 'world') {
+            const tokens = raw.split('#');
+            if (tokens.pop() !== '') lines.push(`    ${problem('section should end with #')}`);
+            for (const token of tokens) {
+                lines.push(attempt(() => {
+                    let n = fromBase82(token);
+                    const site = `${n % 100} ${attempt(() => lookup(data.siteIdToName, n % 100, 'site index'))}`;
+                    const items = [];
+                    for (n = Math.floor(n / 100); n > 0; n = Math.floor(n / 1000)) items.push(n % 1000);
+                    return row(token, fromBase82(token), `site ${site}` + (items.length ? ` | ${idList(items, id => lookup(data.idToName, id, 'card id'))}` : ''));
+                }));
+            }
+        } else if (key === 'worldDeck' || key === 'dispossessed') {
+            lines.push(...chunked(raw, DECK_RADIX, cardName));
+        } else if (key === 'relicDeck') {
+            lines.push(...chunked(raw, RELIC_RADIX, relicName));
+        } else if (key === 'reliquary') {
+            lines.push(single('', raw, RELIC_RADIX, relicName));
+        } else if (key === 'foundations') {
+            lines.push(attempt(() => {
+                const mask = raw === '' ? 0 : fromBase82(raw);
+                const flipped = MAPPING.foundations.map((name, bit) => mask & (1 << bit) ? `${bit + 1} ${name}` : null).filter(Boolean);
+                if (mask >= 1 << MAPPING.foundations.length) throw new Error(`bitmask ${mask} has bits past Foundation ${MAPPING.foundations.length}`);
+                return row(raw, `0b${mask.toString(2).padStart(MAPPING.foundations.length, '0')}`, flipped.length ? `flipped: ${flipped.join(', ')}` : 'none flipped');
+            }));
+        } else if (key.startsWith('players.')) {
+            const fields = raw.split('#');
+            if (fields.length !== 3) { lines.push(`    ${problem(`expected 3 fields separated by #, found ${fields.length}`)}`); return; }
+            const [head, legacies, relics] = fields;
+            const status = STATUSES[BASE82.indexOf(head[0])];
+            lines.push(`    status    ${head[0] || ''} = ${status || problem(`invalid status "${head[0] || ''}"`)}`);
+            lines.push(single('  cards     ', head.slice(1), DECK_RADIX, cardName));
+            if (legacies.length < CHUNK_WIDTH) {
+                lines.push(single('  legacies  ', legacies, LEGACY_RADIX, legacyName));
+            } else {
+                lines.push(`    legacies  (${legacies.length / CHUNK_WIDTH} chunks)`, ...chunked(legacies, LEGACY_RADIX, legacyName));
+            }
+            lines.push(single('  relics    ', relics, RELIC_RADIX, relicName));
+        }
+    });
+
+    // The decoded chronicle must encode back to the same plain string
+    lines.push('');
+    try {
+        const roundTrip = encodeChronicle(decodeChronicle(plain));
+        lines.push(roundTrip === plain ? 'Round trip  ok' : problem(`round trip differs:\n   ${roundTrip}`));
+    } catch (err) {
+        lines.push(problem(`round trip failed: ${err.message}`));
+    }
+    lines.push(problems === 0 ? 'No problems found' : `${problems} problem(s) found`);
+    return { text: lines.join('\n'), problems };
+}
+
 // ---------- command line ----------
 
 function readArg(arg) {
@@ -326,10 +549,11 @@ function readArg(arg) {
 function selfTest() {
     const assert = require('assert');
     // A plain chronicle string as the exporter produces it to test (Atlas Box, Empire, World Deck, Relic Deck, Dispossessed)
-    const plain = 'M#5#F#7f,#6#66{#7#8#K#623#:n$-#7sK#1#0#{oy!#6Bu#6f6#L#6cv#,(CK#3#6M/#>D(1?8w#8U}9#>' + 
-                    '7+-x;V08oZ8huHKQPKOQ4J{es4$aDMR,5JBHv,5{!EF/OybDN2D5rps-D;1311dFNUBqTQ6L!;A5a>' +
-                    '00yuz^g00g:LA100}N:i)01IG=nz00il1~~012G;R2>' +
-                    '00005QqFZ:dW&(Hg}t~5-4ONLOau9x/yb37AIM2pZqK$pO3p00/c17BaBG-$qHk';
+    const plain = 'M#5#F#7f,#6#66)#7#8#K#623#:n@-#7sK#1#0#)oy~#6Bu#6f6#L#6cv#,&CK#3#6M/#>' +
+                  'D&1?8w#8U{9#>' +
+                  '7+-x;V08oZ8huHKQPKOQ4J)es4@aDMR,5JBHv,5)~EF/OybDN2D5rps-D;1311dFNUBqTQ6L~;A5a>' +
+                  '00yuz%g00g:LA100{N:i(01IG=nz00il1!!012G;R2>' +
+                  '00005QqFZ:dW^&Hg{t!5-4ONLOau9x/yb37AIM2pZqK@pO3p00/c17BaBG-@qHk';
     const chronicle = decodeChronicle(plain);
     assert.strictEqual(chronicle.worldDeck.length, 55, 'World Deck should have 55 cards');
     assert.strictEqual(encodeChronicle(chronicle), plain, 'plain round trip');
@@ -342,18 +566,52 @@ function selfTest() {
     const bad = exported.slice(0, 10) + (exported[10] === 'a' ? 'b' : 'a') + exported.slice(11);
     assert.throws(() => decodeExportString(bad), /Checksum failure/);
 
-    // Sections without a codec yet are carried through as raw strings
-    const withTodo = decodeChronicle(plain + '>ABC');
-    assert.deepStrictEqual(withTodo.reliquary, { raw: 'ABC' });
-    assert.strictEqual(encodeChronicle(withTodo), plain + '>ABC');
+    // A skipped Reliquary (empty section) and an empty one ('0') both read as no relics
+    assert.deepStrictEqual(decodeChronicle(plain + '>').reliquary, []);
+    assert.deepStrictEqual(decodeChronicle(plain + '>0').reliquary, []);
+
+    // Legacies: fewer than 5 are one unpadded number, 5 or more are packed in 7-character chunks
+    const legacies = ['Iron Hand', 'Chronicler', 'Steadfast', 'Peacemaker', 'The Needle', 'Pathfinder']
+        .map((name, i) => ({ name, flipped: i % 2 === 1 }));
+    for (const count of [0, 1, 4, 5, 6]) {
+        const player = { status: 'Citizen', cards: ['Scouts'], legacies: legacies.slice(0, count), relics: ['Whistle'] };
+        const field = encodePlayer(player).split('#')[1];
+        assert.ok(count < 5 ? field.length <= 5 : field.length % CHUNK_WIDTH === 0, `legacy field length for ${count}`);
+        assert.deepStrictEqual(decodePlayer(encodePlayer(player)), player, `player round trip with ${count} legacies`);
+    }
+    assert.throws(() => encodePlayer({ cards: Array(7).fill('Scouts') }), /exactly/, 'more than 6 player cards cannot be exact');
+
+    // Every Foundation combination round trips
+    for (let mask = 0; mask < 64; mask++) {
+        const flipped = MAPPING.foundations.filter((_, bit) => mask & (1 << bit));
+        assert.deepStrictEqual(decodeFoundations(encodeFoundations(flipped)), flipped);
+    }
+
+    // A full version 2 export from the Lua exporter in TTS, with Reliquary, Foundations and players (flipped legacies included).
+    // Re-encoding it must give the exact same string, which checks that Lua and JS agree
+    const fullExport = '02H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,c)@b!/eoUQ9Qs!w223^(:%Lf.{eA5@(1u^DqWE$Kv#=iyHXC/5T';
+    const full = decodeExportString(fullExport);
+    assert.deepStrictEqual(full.reliquary, ['Spiteful Mirror', 'Sigil of the Eye', 'Whistle', 'Lost Tapestry', 'Cracked Horn']);
+    assert.deepStrictEqual(full.foundations, ['Teeming World']);
+    assert.deepStrictEqual(full.players.yellow, {
+        status: 'Chancellor', cards: ['Scouts'], relics: [],
+        legacies: [{ name: 'Light Fingers', flipped: false }, { name: 'Arbiter', flipped: true }],
+    });
+    assert.deepStrictEqual(full.players.brown.legacies, [
+        { name: 'Beloved', flipped: true }, { name: 'The Ear', flipped: false }, { name: 'Chronicler', flipped: true }]);
+    assert.deepStrictEqual(full.players.black, { status: 'Exile', cards: [], legacies: [], relics: [] });
+    const { version, ...fullChronicle } = full;
+    assert.strictEqual(encodeExportObject(fullChronicle), fullExport, 'full Lua export round trip');
 
     // A pair from one run of the real Lua exporter in TTS: the plain string, and the scrambled string it produced.
-    // The plain string ends in '>' because the exporter does not stop after the last section yet, which leaves an empty reliquary section.
-    const luaPlain = 'M#5#F#7f,#6#66{#7#8#K#623#:n$-#7sK#1#0#{oy!#6Bu#6f6#L#6cv#,(CK#3#6M/#>D(1?8w#8U}9#>' +
-                     '7+-x;V08oZ8huHKQPKOQ4J{es4$aDMR,5JBHv,5{!EF/OybDN2D5rps-D;1311dFNUBqTQ6L!;A5a>' +
-                     '00wjXpz00,,9Hd00cGcDm00aVgF=00F?^0"00i^s)Z>' +
-                     '00005QqFZ:dW&(Hg}t~5-4ONLOau9x/yb37AIM2pZqK$pO3p00/c17BaBG-$qHk>';
-    const luaExport = '01H3uk5(m#lvuYL;KIO:Mg9FjOs{5.yU~bk}6k9tUwlHwZ"z^uTY3."IvkwdiP9.r{s-g,XAxa~{JRjGCc5ze%;93!2=J;chc{06a"66Pn:tI#vWs!QDbnK5PpZ#(Xq36lcTLE-g359}rq/DBYLh$RBb!R;?%:iMT",!=/N${J+fh9Ip8T1#dMl?Gf:M?tM^r/8^cL,lF}RGZOorax$0pONlP$9O.(SmJ>G6bq2t&7FJFmI>W%a,3r4:(ohBXUX{%(d^DuAJl^i!Y,:P';
+    // The plain string ends in '>', which leaves an empty (skipped) reliquary section.
+    // Re-encoded from a version 1 run for the version 2 alphabet (the full export above covers Lua and JS agreeing)
+    const luaPlain = 'M#5#F#7f,#6#66)#7#8#K#623#:n@-#7sK#1#0#)oy~#6Bu#6f6#L#6cv#,&CK#3#6M/#>' +
+                     'D&1?8w#8U{9#>' +
+                     '7+-x;V08oZ8huHKQPKOQ4J)es4@aDMR,5JBHv,5)~EF/OybDN2D5rps-D;1311dFNUBqTQ6L~;A5a>' +
+                     '00wjXpz00,,9Hd00cGcDm00aVgF=00F?%0}00i%s(Z>' +
+                     '00005QqFZ:dW^&Hg{t!5-4ONLOau9x/yb37AIM2pZqK@pO3p00/c17BaBG-@qHk>';
+    const luaExport = '02H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,:P';
     const luaChronicle = decodeChronicle(luaPlain);
     assert.strictEqual(encodeChronicle(luaChronicle), luaPlain, 'Lua plain string round trip');
     assert.strictEqual(encodeExportObject(luaChronicle), luaExport, 'JS produces the same export string as the Lua exporter');
@@ -370,11 +628,18 @@ function main(argv) {
         const json = plain ? decodeChronicle(text) : decodeExportString(text);
         return console.log(JSON.stringify(json, null, 2));
     }
+    if (command === 'inspect' && input) {
+        const { text, problems } = inspectExportString(readArg(input), plain);
+        console.log(text);
+        if (problems > 0) process.exitCode = 1;
+        return;
+    }
     if (command === 'encode' && input) {
         const json = JSON.parse(input === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(input, 'utf8'));
         return console.log(plain ? encodeChronicle(json) : encodeExportObject(json));
     }
     console.error('Usage: node chronicle-codec.js decode <export string | -> [--plain]\n'
+        + '       node chronicle-codec.js inspect <export string | -> [--plain]\n'
         + '       node chronicle-codec.js encode <file.json | -> [--plain]\n'
         + '       node chronicle-codec.js selftest');
     process.exitCode = 1;
@@ -767,6 +1032,8 @@ const MAPPING = {
         35: "Reformer",
         36: "Pathfinder",
     },
+    // Foundations in bit order (I to VI)
+    foundations: ["Imperial Maps", "Powerful Tribes", "Quiet Ambitions", "Teeming World", "Mob's Favor", "Wandering Flame"],
     // site name -> site index. Several names can share an index for legacy reasons, and the first one listed is the canonical name
     sites: {
         "Ancient City": 0,
@@ -800,7 +1067,7 @@ const MAPPING = {
     },
 };
 
-module.exports = { decodeExportString, encodeExportObject, decodeChronicle, encodeChronicle, scramble, checksum };
+module.exports = { decodeExportString, encodeExportObject, decodeChronicle, encodeChronicle, inspectExportString, scramble, checksum };
 
 if (require.main === module) {
     try {

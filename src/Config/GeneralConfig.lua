@@ -29,6 +29,23 @@ GUIDs = {
     },
     scriptingTrigger = '84ebee',
     starsCard = "43c99e",
+    foundations = {
+        {name = "Foundation I: Imperial Maps", GUID = "6278ae"},
+        {name = "Foundation II: Powerful Tribes", GUID = "1774bc"},
+        {name = "Foundation III: Quiet Ambitions", GUID = "3e4736"},
+        {name = "Foundation IV: Teeming World", GUID = "fbb3c4"},
+        {name = "Foundation V: Mob's Favor", GUID = "2a9f5d"},
+        {name = "Foundation VI: Wandering Flame", GUID = "8bc248"},
+    },
+    playerBoards = { -- Base/Citizen
+        {color = "Red", idx=02, GUID = {"0b2c43", "0867dd"}},
+        {color = "Blue", idx=03, GUID = {"eab256", "508780"}},
+        {color = "Yellow", idx=06, GUID = {"e77125", "623e25"}},
+        {color = "Black", idx=04, GUID = {"75dec1", "2cdc7e"}},
+        {color = "White", idx=05, GUID = {"2c0051", "d69751"}},
+        {color = "Brown", idx=07, GUID = {"88b6e5", "9f2e36"}},
+        {color = "Pink", idx=01, GUID = {"54d2ac", "bad9a4"}}
+    }
 
 }
 

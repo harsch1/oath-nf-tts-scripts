@@ -75,6 +75,17 @@ function prettyPrintTable(obj, indent)
     print(formatting .. "}")
 end
 
+function roundToNearest180(z)
+    -- Round z rotation to nearest 0, 180, or 360
+    local nearest = 0
+    if math.abs(z - 180) < math.abs(z - 0) and math.abs(z - 180) < math.abs(z - 360) then
+        nearest = 180
+    elseif math.abs(z - 360) < math.abs(z - 0) then
+        nearest = 360
+    end
+    return nearest
+end
+
 
 -- Get transform for a given tag and index
 -- Requires GeneralConfig
@@ -88,9 +99,9 @@ function getTransformStruct(tag, index, baseTransform)
     }
 end
 
-local base82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/!~$%^&(){}";:,.?'
+local base82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?'
 local base82Plus = base82 .. "#>" --With seperators
-local encodingVersion = 1
+local encodingVersion = 2
 
 -- Encodes a number into "Base82" with the above string as a list of all digits
 function oEncode(data)
@@ -138,7 +149,7 @@ function scramble(s, isDecoding)
     if isDecoding then
         input = input:gsub("%s", "") --Remove whitespace
         assert(input:sub(1,2) == oEncode2D(encodingVersion), 'this export string uses the wrong encoding version')
-        input = sub(3,-3) -- Remove first and last 2 characters (version number and checksum)
+        input = input:sub(3,-3) -- Remove first and last 2 characters (version number and checksum)
     end
     for i = 1, #input do --For each 'digit' in our data string
         seed = (seed * 16807) % 2147483647 --Pseudo-random shift as we walk through: (multiplier 7^5, modulus 2^31 - 1).

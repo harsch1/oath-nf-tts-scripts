@@ -769,17 +769,6 @@ end
 -- UTILITY
 -- ==============================
 
-function roundToNearest180(z)
-    -- Round z rotation to nearest 0, 180, or 360
-    local nearest = 0
-    if math.abs(z - 180) < math.abs(z - 0) and math.abs(z - 180) < math.abs(z - 360) then
-        nearest = 180
-    elseif math.abs(z - 360) < math.abs(z - 0) then
-        nearest = 360
-    end
-    return nearest
-end
-
 -- Get object from Atlas Box at a given index
 function getFromAtlasBox(i)
     local isUnlocked = objects.atlasBox.hasTag(tags.unlocked)
