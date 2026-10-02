@@ -522,7 +522,9 @@ function makeButton()
         click_function = "advanceExportSteps",
         function_owner = self,
         label          = "",
-        position       = {0, -0.4, 1.2},
+        position       = {1.25, -0.15, 0},
+        rotation       = {0, 180, 0},
+        scale          = {2/4.519321, 2/1.61203337, 2/3.20494151},
         width          = 700,
         height         = 500,
         font_size      = 110,
@@ -543,12 +545,14 @@ function makeButton()
     elseif currentStep == "Reliquary" then
         b.label = "Current Step:\n" .. currentStep
         b.width = 650
-        b.position = {-0.150, -0.4, 1.2}
+        b.position = {1.4, -0.15, 0}
         local b2 =  {
             click_function = "skipReliquary",
             function_owner = self,
             label          = ">",
-            position       = {0.650, -0.4, 1.2},
+            position       = {1.05, -0.15, 0},
+            rotation       = {0, 180, 0},
+            scale          = {2/4.519321, 2/1.61203337, 2/3.20494151},
             width          = 100,
             height         = 500,
             font_size      = 110,
