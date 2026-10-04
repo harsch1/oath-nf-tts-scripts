@@ -462,6 +462,7 @@ edificeIndex = {
 
 siteIndex = {
     ["Ancient City"] = 0,
+        ["City of Forges"] = 0,
     ["Broken Peaks"] = 1,
     ["Buried Giant"] = 2,
         ["Sleeping Giant"] = 2,

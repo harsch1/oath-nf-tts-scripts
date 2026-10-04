@@ -1037,6 +1037,7 @@ const MAPPING = {
     // site name -> site index. Several names can share an index for legacy reasons, and the first one listed is the canonical name
     sites: {
         "Ancient City": 0,
+        "City of Forges": 0,
         "Broken Peaks": 1,
         "Buried Giant": 2,
         "Sleeping Giant": 2,

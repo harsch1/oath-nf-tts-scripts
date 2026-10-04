@@ -14,12 +14,11 @@ function onLoad(state)
     if state ~= nil then
         local loadedData = JSON.decode(state)
         if loadedData then
-            if loadedData.currentStep then -- TODO: revert to proper save/load
-                -- currentStep = loadedData.currentStep
-                currentStep = "PreInit"
+            if loadedData.currentStep then
+                currentStep = loadedData.currentStep
             end
             if loadedData.stringSoFar then
-                stringSoFar = ""
+                stringSoFar = loadedData.stringSoFar
             end
         else
             currentStep = "PreInit"
@@ -66,9 +65,10 @@ function advanceExportSteps()
             errors = 0
             for _, siteObject in ipairs(getObjectFromGUID(GUIDs.atlasBox).getData().ContainedObjects) do
                 local siteName = siteObject.Nickname
+                -- printToAll("Found site: " .. siteName)
                 local mult = 100
-                -- printToAll("site: " .. siteName)
                 local sum = siteIndex[siteName]
+                -- printToAll("Site index: " .. sum)
                 if siteObject.ChildObjects then 
                     for _, childObject in ipairs(siteObject.ChildObjects) do
                         if childObject.Tags then
@@ -81,24 +81,22 @@ function advanceExportSteps()
                                 })[tag] or objectType
                             end
                             if objectType == tags.edifice then
-                                -- printToAll("edifice: " .. childObject.CardID)
+                                -- printToAll("Found edifice: " .. childObject.CardID)
                                 local cardId = tonumber(childObject.CardID)
                                 local deckNumber = math.floor(cardId / 100)
-                                -- printToAll("deckNumber: " .. deckNumber .. " " .. edificeDeckLookup[deckNumber])
                                 if edificeDeckLookup[deckNumber] then
-                                    -- printToAll(edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)
                                     sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
                                     mult = mult * 1000
                                 end
                             end
                             if objectType == tags.relic then
-                                -- printToAll("relic: " .. childObject.CardID)
+                                -- printToAll("Found relic: " .. childObject.CardID)
                                 local cardId = tonumber(childObject.CardID)
                                     sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
                                     mult = mult * 1000
                             end
                             if objectType == tags.card then
-                                -- printToAll("card: " .. childObject.CardID)
+                                -- printToAll("Found card: " .. childObject.CardID)
                                 local cardId = tonumber(childObject.CardID)
                                 local deckNumber = math.floor(cardId / 100)
                                 if deckLookup[deckNumber] then
@@ -134,24 +132,19 @@ function advanceExportSteps()
                 if not isEmpty then
                     for _, hitItem in ipairs(object) do
                         if hitItem.hasTag(tags.edifice) then
-                            printToAll("edifice: " .. hitItem.getData().CardID)
                             local cardId = tonumber(hitItem.getData().CardID)
                             local deckNumber = math.floor(cardId / 100)
-                            -- printToAll("deckNumber: " .. deckNumber .. " " .. edificeDeckLookup[deckNumber])
                             if edificeDeckLookup[deckNumber] then
-                                -- printToAll(edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)
                                 sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
                                 mult = mult * 1000
                             end
                         end
                         if hitItem.hasTag(tags.relic) then
-                            printToAll("relic: " .. hitItem.getData().CardID)
                             local cardId = tonumber(hitItem.getData().CardID)
                                 sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
                                 mult = mult * 1000
                         end
                         if hitItem.hasTag(tags.card) then
-                            printToAll("card: " .. hitItem.getData().CardID)
                             local cardId = tonumber(hitItem.getData().CardID)
                             local deckNumber = math.floor(cardId / 100)
                             if deckLookup[deckNumber] then
@@ -196,7 +189,7 @@ function advanceExportSteps()
     end
     if currentStep == "World Deck" then
         updateButton()
-        printToAll("Place the World Deck in the box on the desk...\n===========",  hexToColor("#e7ce87"))
+        printToAll("Place the World Deck in the box on the desk (without the visions in)...\n===========",  hexToColor("#e7ce87"))
         -- onObjectEnter to continue
     end
     if currentStep == "Relic Deck" then
@@ -234,7 +227,8 @@ function advanceExportSteps()
     end
     if currentStep == "Players" then
         updateButton()
-        printToAll("Archive all Players.\n Then, unlock the Player Archive in the bottom left corner (L key as the Host)." ..
+        printToAll("Archive all Players.\n Then, unlock the Player Archive in the bottom left corner (L key as thae Host)." ..
+                   "\n(If the player boards are glitching out and getting in your way, just save and reload)" ..
                    "\n Place the bag in the box on the desk...\n===========",  hexToColor("#e7ce87"))
     end
 end
@@ -267,7 +261,6 @@ function onObjectEnterContainer(container, object)
             end
             stringSoFar = stringSoFar ..worldDeckString.. ">"
             nextStep()
-            -- updateButton()
             advanceExportSteps()
             return
         end
@@ -480,9 +473,9 @@ function onObjectEnterContainer(container, object)
                     end
                 end
             end
-            printToAll(scramble(stringSoFar))
+            printToAll("Displaying Chronicle String...\n===========",  hexToColor("#e7ce87"))
             nextStep()
-
+            updateButton()
         end
     end
 end
@@ -492,9 +485,10 @@ function nextStep()
         if step == currentStep then
             if i < #steps then
                 currentStep = steps[i + 1]
-            else -- TODO: Finish the export process and show the actual final export string
+            else
                 showExportString(scramble(stringSoFar))
                 currentStep = "PreInit"
+                stringSoFar = ""
             end
             break
         end
@@ -573,38 +567,52 @@ end
 function showExportString(displayString)
     addTextInputToXml()
 
-    Global.UI.setAttribute("panel_text_description", "text", "Copy to the clipboard to\nexport your Chronicle state  \n(click, then press Ctrl-C)")
-    Global.UI.setAttribute("panel_text_data", "text", displayString)
-    Global.UI.setAttribute("ok_panel_text", "active", true)
-    Global.UI.setAttribute("ok_panel_text", "textColor", "#FFFFFFFF")
-    Global.UI.setAttribute("panel_text", "active", true)
+    Wait.condition(function()
+        Global.UI.setAttribute("panel_text_data", "text", displayString)
+        Global.UI.setAttribute("panel_text", "active", "true")
+    end, function()
+        return not Global.UI.loading
+    end)
 end
 
 function closePanelText(player, value, id)
-    Global.UI.setAttribute("panel_text", "active", false)
-    Global.UI.setAttribute("ok_panel_text", "active", false)
+    Global.UI.setAttribute("panel_text", "active", "false")
 end
 
 function addTextInputToXml()
-    local panelTextXml = [[
-     <Panel id="panel_text" offsetXY="0 0" active="false" rectAlignment="MiddleCenter" width="700" height="700" image="menu_text" allowDragging="true" returnToOriginalPositionWhenReleased="false" color="#c69a4e" >
-          <Text id="panel_text_description" offsetXY="0 270" width="600" height="150" fontSize="40" fontStyle="Bold" color="#000000FF"></Text>
-          <InputField id="panel_text_data" lineType="MultiLineNewLine" offsetXY="0 -30" width="670" height="400" fontSize="24" colors="#FFFFFF40|#FFFFFF40|#FFFFFF40|#FFFFFF40" textColor="#000000FF" onEndEdit="panelTextEndEdit"></InputField>
-          <Button id="ok_panel_text" active="false" offsetXY="0 -290" width="134" height="54" onClick="]] .. self.getGUID() .. [[/closePanelText()" fontSize="32" colors="#444444FF|#606060FF|#747474FF|#00000000" textColor="#FFFFFFFF">OK</Button>
-     </Panel>
-    ]]
+    Global.UI.setXml([[
+        <Panel id="panel_text"
+            active="false"
+            rectAlignment="MiddleCenter"
+            width="700" height="700"
+            allowDragging="true"
+            returnToOriginalPositionWhenReleased="false"
+            color="#c69a4e">
 
-    local xmlTable = Global.UI.getXmlTable()
-    local hasPanelAlready = false
-    for _, element in ipairs(xmlTable) do
-        if element.tag == "Panel" and element.attributes.id == "panel_text" then
-            hasPanelAlready = true
-            break
-        end
-    end
-    if not hasPanelAlready then
-        Global.UI.setXml(Global.UI.getXml() .. " " .. panelTextXml)
-    end
+            <Text offsetXY="0 270"
+                width="600" height="150"
+                fontSize="40" fontStyle="Bold"
+                color="#000000FF">
+                Copy your Chronicle export
+                (click the text, then press Ctrl-A and Ctrl-C)
+                and save it somewhere safe!
+            </Text>
 
-    
+            <InputField id="panel_text_data"
+                lineType="MultiLineNewLine"
+                offsetXY="0 -30"
+                width="670" height="400"
+                fontSize="24"
+                textColor="#000000FF" />
+
+            <Button offsetXY="0 -290"
+                width="134" height="54"
+                fontSize="32"
+                colors="#444444FF|#606060FF|#747474FF|#00000000"
+                textColor="#FFFFFFFF"
+                onClick="]] .. self.getGUID() .. [[/closePanelText">
+                OK
+            </Button>
+        </Panel>
+    ]])
 end
