@@ -1,14 +1,12 @@
 -- GUIDs for needed items. IF SOMETHING IS BROKEN LIKELY THESE ARE NO LONGER CORRECT
 GUIDs = {
-    atlasBox = "f8bd3c",
-    banditBag = "0748d5",
-    newAtlasBox = "8f8e1a",
-    -- edifices = "1662f7",
-    relicBag = "c46336",
-    -- shadowBag = "1ce44a",
-    siteBag = "12dafe",
-    table = "4ee1f2",
+    atlasBox = "8f8e1a",
+    banditBag = "dfe71a",
+    favorBag = "a0b9c8",
+    relicPile = "7dc3e5",
+    table = "daf876",
     map = "d5dacf",
+    secretBag = "96a4f2",
     dispossessedBag = "e52b07",
     archiveDecks = {
         Arcane = "eb5f90",
@@ -20,7 +18,7 @@ GUIDs = {
     },
     edificeDeck = "1218b6",
     edificeDecks = {
-        Arcane = "7b1cba",
+        Arcane = "6a23a9",
         Beast = "b81778",
         Discord = "c89e0e",
         Hearth = "cd0dec",
@@ -29,6 +27,7 @@ GUIDs = {
     },
     scriptingTrigger = '84ebee',
     starsCard = "43c99e",
+    archiveBoard = "a70bd6",
     foundations = {
         {name = "Foundation I: Imperial Maps", GUID = "6278ae"},
         {name = "Foundation II: Powerful Tribes", GUID = "1774bc"},
@@ -62,6 +61,8 @@ tags = {
     card = "Card",
     slow = "Slow",
     bandit = "Bandit",
+    favor = "Favor",
+    secret = "Secret",
 }
 
 -- Name strings to use for Atlas Slots depending on their states
@@ -80,29 +81,49 @@ portal = {
 -- Positions
 pos = {
     -- relative to site
-    bandit  =       function(i) return {x = -1.5+1.5*i, y = 3, z = 2} end,
-    denizen =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
-    relic   =       function(i) return {x = 5.35+3.3*i, y = 0.25, z = 0} end,
+    bandit  =       function(i) return {x = -1.8+2*i, y = 3, z = 2.79} end,
+    favor  =        function(i) return {x = -3.75, y = 3, z = 2.79-1.25*i} end,
+    secret  =       function(i) return {x = -3.75, y = 3, z = 2.79-1.25*i} end,
+    denizen =       function(i) return {x = 6.69+4.19*i, y = 0, z = 0} end,
+    relic   =       function(i) return {x = 6.69+4.19*i, y = 0, z = 0} end,
     -- relative to atlas portal/box
-    portal =        function(i) return {x = 0, y = 0.10, z = 0} end,
-    preview =       function(i) return {x = 0, y = 1.525, z = -0.56} end,
+    preview =       function(i) return {x = 0, y = 2, z = -0.75} end,
     -- relative to map
-    dispossessed =  function(i) return {x = -117.15, y = 0.55, z = 29.15} end,
-    relicStack =    function(i) return {x = -19.7, y = 0.55,  z = -9.9} end,
+    dispossessed =  function(i) return {x = -92.64, y= 1.24, z = 75.39} end,
+    relicStack =    function(i) return {x = -24.85, y = 1.47,  z = -12.40} end,
     site =          function(i)
                         local sitePositions = {
-                            { x = -26.55, y = 0.03, z =  5.00 },
-                            { x = -26.55, y = 0.03, z = -0.75 },
-                            { x = -06.10, y = 0.03, z =  5.00 },
-                            { x = -06.10, y = 0.03, z = -0.75 },
-                            { x = -06.10, y = 0.03, z = -6.50 },
-                            { x =  14.85, y = 0.03, z =  5.00 },
-                            { x =  14.85, y = 0.03, z = -0.75 },
-                            { x =  14.85, y = 0.03, z = -6.50 }
+                            { x = -33.42, y = 0.20, z =  6.25 },
+                            { x = -33.42, y = 0.20, z = -0.94 },
+                            { x = -07.67, y = 0.20, z =  6.25 },
+                            { x = -07.67, y = 0.20, z = -0.94 },
+                            { x = -07.67, y = 0.20, z = -8.16 },
+                            { x =  18.69, y = 0.20, z =  6.25 },
+                            { x =  18.69, y = 0.20, z = -0.94 },
+                            { x =  18.69, y = 0.20, z = -8.16 }
                         }
                         return sitePositions[i]
                     end,
-    worldDeck =     function(i) return {x = -14.53, y = 0.55, z = -9.9} end,
+    worldDeck =     function(i) return {x = -18.23, y = 1.53, z = -12.50} end,
+    -- relative to archive board, indexed by suit
+    archiveDeck =   function(suit)
+                        local x = archiveBoardSuitOffsetsX[suit]
+                        if x == nil then return nil end
+                        return {x = x, y = 0.30, z = 5.09}
+                    end,
+    edificeDeck =   function(suit)
+                        local x = archiveBoardSuitOffsetsX[suit]
+                        if x == nil then return nil end
+                        return {x = x, y = 0.30, z = -5.84}
+                    end,
+}
+archiveBoardSuitOffsetsX = {
+    Discord = -15.30,
+    Arcane  = -9.23,
+    Order   = -3.09,
+    Hearth  =  3.09,
+    Beast   =  9.22,
+    Nomad   =  15.33,
 }
 
 -- Rotations
@@ -115,6 +136,24 @@ rot = {
     relicStack =    {x = 180, y = 0,   z = 0},
     site =          {x = 0,   y = 180, z = 0},
     worldDeck =     {x = 0,   y = 270,  z = 180},
+}
+
+-- Site preview shown above the Atlas Box
+-- Site bags: a rounded slab with the site art and card back as decals on its top and bottom
+siteBagConfig = {
+    meshURL = "https://steamusercontent-a.akamaihd.net/ugc/13389043065856405551/5AEBA4343C811EFF0C2B79F9822A0A7D67B06299/",
+    size = {x = 8.7125, y = 0.0375, z = 6.7375},
+    backURL = "https://raw.githubusercontent.com/harsch1/oath-nf-tts-scripts/refs/heads/2.0/assets/img/Sites/Rounded/landBack.webp",
+}
+
+sitePreviewConfig = {
+    siteScale    = 1.0,   -- the site preview is a site bag model at this fraction of full size
+    denizenScale = {x = 2.06, y = 1.0, z = 2.06},  -- denizens and edifices
+    relicScale   = {x = 1.2,  y = 1.0, z = 1.2},
+    -- Offsets from the site preview for the i-th (0-based) denizen/edifice and relic.
+    -- Depths (z) never overlap: site 0, denizens -0.10 (first, frontmost) back towards the site, relics -0.13 and forward
+    denizenOffset = function(i) return {x = 2.15 - 1*i, y = -0.75 - 0.1*i, z = -0.10 + 0.03*i} end,
+    relicOffset   = function(i) return {x = 2.35 - 1.5*i, y = -2.25, z = -0.13 - 0.03*i} end,
 }
 
 suits = {"Arcane","Beast","Discord","Hearth","Nomad","Order"}
