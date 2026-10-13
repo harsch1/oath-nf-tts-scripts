@@ -14,7 +14,7 @@ function getRandomObjectFromContainer(container, flipped)
         guid = selected.guid,
         position = vectorSum(container.getPosition(), {x = 0, y = 5, z = 0}),
         rotation = flipped and vectorSum({x = 180, y = 180, z = 0},container.getRotation()) or container.getRotation(),
-    })
+    }), container.remainder
 end
 
 function vectorSum(v1, v2)
