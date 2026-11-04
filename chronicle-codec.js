@@ -10,14 +10,15 @@
 //   node chronicle-codec.js selftest
 //   Add --plain to skip the version/scramble/checksum wrapper (the raw string the exporter builds before scrambling)
 //
-//   Pass export strings in single quotes: '02H3uk...' (' is not in the alphabet, so nothing inside needs escaping).
+//   Pass export strings in single quotes: '03H3uk...' (' is not in the alphabet, so nothing inside needs escaping).
 //   Double quotes corrupt them, since $ starts a variable in PowerShell and bash. Or pipe it in: Get-Clipboard | node chronicle-codec.js inspect -
 //
 // Also usable as a module: decodeExportString, encodeExportObject, decodeChronicle, encodeChronicle, inspectExportString
 
 const fs = require('fs');
 
-const ENCODING_VERSION = 2;
+const ENCODING_VERSION = 3;
+const SUPPORTED_VERSIONS = [2, 3]; // Versions we can decode. Encoding always writes ENCODING_VERSION
 const SCRAMBLE_SEED = 468529063; // Random seed for scrambling world output to make it less readable
 // Our 'Base82' alphabet. Printable ASCII minus ' \ ` * _ | [ ] < and ", so it is safe to use in most places
 const BASE82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?';
@@ -292,33 +293,66 @@ function decodeReliquary(section) {
     return unpackNumber(section, RELIC_RADIX).map(id => relicNameOf(data, id));
 }
 
-// ---------- Foundations ----------
-// A bitmask of the flipped Foundations: Foundation I is 1, II is 2, III is 4 and so on
+// ---------- Foundations and Oath ----------
+// Always 3 characters: [foundations: 2 digits][oath: 1 digit]
+// foundations: a bitmask of the flipped Foundations: Foundation I is 1, II is 2, III is 4 and so on
+// oath: index into OATHS. 5-20 are reserved for future design space and 21+ for fan content, those currently encode and decode as their number
+// Version 2 had only the bitmask, unpadded, with an empty section meaning none flipped. It decodes with an unset Oath ('')
 
-function encodeFoundations(names) {
+const OATHS = ['', 'Supremacy', 'Devotion', 'People', 'Protection'];
+const FOUNDATIONS_WIDTH = 2;
+
+function oathNumber(oath) {
+    if (typeof oath === 'number') {
+        if (!Number.isInteger(oath) || oath < 0 || oath >= 82) throw new Error(`Oath ${oath} does not fit in one digit`);
+        return oath;
+    }
+    const n = OATHS.indexOf(oath);
+    if (n < 0) throw new Error(`Unknown Oath: ${oath}`);
+    return n;
+}
+
+const oathName = n => n < OATHS.length ? OATHS[n] : n;
+
+function encodeFoundations({ foundations = [], oath = '' }) {
     let mask = 0;
-    for (const name of names) {
+    for (const name of foundations) {
         const bit = MAPPING.foundations.indexOf(name);
         if (bit < 0) throw new Error(`Unknown Foundation: ${name}`);
         mask |= 1 << bit;
     }
-    return toBase82(mask);
+    return padEncode(mask, FOUNDATIONS_WIDTH) + toBase82(oathNumber(oath));
 }
 
-function decodeFoundations(section) {
-    const mask = section === '' ? 0 : fromBase82(section);
-    if (mask >= 1 << MAPPING.foundations.length) throw new Error(`Invalid Foundations value: ${section}`);
+function decodeFoundationMask(text) {
+    const mask = text === '' ? 0 : fromBase82(text);
+    if (mask >= 1 << MAPPING.foundations.length) throw new Error(`Invalid Foundations value: ${text}`);
     return MAPPING.foundations.filter((_, bit) => mask & (1 << bit));
 }
 
+function decodeFoundations(section, version = ENCODING_VERSION) {
+    if (version === 2) return { foundations: decodeFoundationMask(section), oath: '' };
+    if (section.length !== FOUNDATIONS_WIDTH + 1) {
+        throw new Error(`Foundations section should be ${FOUNDATIONS_WIDTH + 1} characters, found ${section.length}: ${section}`);
+    }
+    return {
+        foundations: decodeFoundationMask(section.slice(0, FOUNDATIONS_WIDTH)),
+        oath: oathName(fromBase82(section[FOUNDATIONS_WIDTH])),
+    };
+}
+
 // ---------- players ----------
-// [status: 1 digit][cards]#[legacies]#[relics]
-// status: 0 Exile, 1 Citizen, 2 Chancellor. Cards and relicsare single numbers.
+// [status: 1 digit][lineage: 2 digits][cards]#[legacies]#[relics]
+// status: 0 Exile, 1 Citizen, 2 Chancellor. lineage: the player's lineage score, 0 to 6723 (version 2 had none, it decodes as 0)
+// A higher lineage score is written as 6723
+// Cards and relics are single numbers.
 // Legacies are id + LEGACY_FLIPPED if flipped, in radix 200. Fewer than CHUNK_SIZE are one unpadded number (at most 5 characters),
 // otherwise they are packed like a deck (a multiple of CHUNK_WIDTH characters), so the length tells the two apart.
-// A player missing from the export is written as an empty Exile, '0##'
+// A player missing from the export is written as an empty Exile, '000##'
 
 const STATUSES = ['Exile', 'Citizen', 'Chancellor'];
+const LINEAGE_WIDTH = 2;
+const MAX_LINEAGE = 6723; // 82^2 - 1, the most LINEAGE_WIDTH digits hold
 const LEGACY_RADIX = 200;
 const LEGACY_FLIPPED = 100;
 
@@ -338,30 +372,35 @@ function decodeLegacies(field) {
     }));
 }
 
-function encodePlayer({ status = 'Exile', cards = [], legacies = [], relics = [] }) {
+function encodePlayer({ status = 'Exile', lineage = 0, cards = [], legacies = [], relics = [] }) {
     const data = loadMapping();
     const statusNum = STATUSES.indexOf(status);
     if (statusNum < 0) throw new Error(`Unknown player status: ${status}`);
+    if (!Number.isInteger(lineage) || lineage < 0) throw new Error(`Lineage score ${lineage} must be a whole number of 0 or more`);
+    lineage = Math.min(lineage, MAX_LINEAGE);
     const cardIds = cards.map(name => {
         const id = lookup(data.nameToId, name, 'card');
         if (!isCardId(id)) throw new Error(`${name} is not a deck card`);
         return id;
     });
-    return toBase82(statusNum) + packNumber(cardIds, DECK_RADIX) + '#'
+    return toBase82(statusNum) + padEncode(lineage, LINEAGE_WIDTH) + packNumber(cardIds, DECK_RADIX) + '#'
         + encodeLegacies(legacies) + '#'
         + packNumber(relics.map(name => relicIdOf(data, name)), RELIC_RADIX);
 }
 
-function decodePlayer(section) {
+function decodePlayer(section, version = ENCODING_VERSION) {
     const data = loadMapping();
     const fields = section.split('#');
     if (fields.length !== 3) throw new Error(`Player section should have 3 fields, found ${fields.length}: ${section}`);
     const [head, legacies, relics] = fields;
     const status = STATUSES[BASE82.indexOf(head[0])];
     if (!status) throw new Error(`Invalid player status in: ${section}`);
+    const lineageWidth = version === 2 ? 0 : LINEAGE_WIDTH;
+    if (head.length < 1 + lineageWidth) throw new Error(`Player section is missing its lineage score: ${section}`);
     return {
         status,
-        cards: unpackNumber(head.slice(1), DECK_RADIX).map(id => {
+        lineage: lineageWidth ? fromBase82(head.slice(1, 1 + lineageWidth)) : 0,
+        cards: unpackNumber(head.slice(1 + lineageWidth), DECK_RADIX).map(id => {
             if (!isCardId(id)) throw new Error(`Id ${id} is not a deck card`);
             return lookup(data.idToName, id, 'card id');
         }),
@@ -379,21 +418,29 @@ const CODECS = {
     relicDeck: { decode: decodeRelicDeck, encode: encodeRelicDeck },
     dispossessed: { decode: decodeCardDeck, encode: encodeCardDeck },
     reliquary: { decode: decodeReliquary, encode: encodeReliquary },
-    foundations: { decode: decodeFoundations, encode: encodeFoundations },
+    // One section holding two chronicle keys. It must always be 3 characters, so when missing before a later section it is written as missing
+    foundations: { decode: decodeFoundations, encode: encodeFoundations, fields: ['foundations', 'oath'], missing: {} },
 };
 for (const color of PLAYER_COLORS) {
     CODECS[`players.${color}`] = { decode: decodePlayer, encode: encodePlayer };
 }
 
-// 'players.red' lives at chronicle.players.red, every other key at chronicle[key]
+// 'players.red' lives at chronicle.players.red, a section with fields at chronicle[field] for each field, every other key at chronicle[key]
 function getSection(chronicle, key) {
+    const { fields } = CODECS[key];
+    if (fields) {
+        if (fields.every(field => chronicle[field] === undefined)) return undefined;
+        return Object.fromEntries(fields.map(field => [field, chronicle[field]]));
+    }
     const [group, color] = key.split('.');
     return color ? (chronicle[group] || {})[color] : chronicle[group];
 }
 
 function setSection(chronicle, key, value) {
     const [group, color] = key.split('.');
-    if (color) {
+    if (CODECS[key].fields) {
+        Object.assign(chronicle, value);
+    } else if (color) {
         chronicle[group] = chronicle[group] || {};
         chronicle[group][color] = value;
     } else {
@@ -406,19 +453,22 @@ function encodeChronicle(chronicle) {
     const values = SECTIONS.map(key => getSection(chronicle, key));
     let count = values.length;
     while (count > 0 && values[count - 1] === undefined) count--; // sections are written in order, so stop after the last one present
-    // A missing section before that point is written empty, which keeps every later section in its place
+    // A missing section before that point is written empty (or as its codec's missing value), which keeps every later section in its place
     return SECTIONS.slice(0, count)
-        .map((key, i) => values[i] === undefined ? '' : CODECS[key].encode(values[i]))
+        .map((key, i) => {
+            const value = values[i] === undefined ? CODECS[key].missing : values[i];
+            return value === undefined ? '' : CODECS[key].encode(value);
+        })
         .join('>');
 }
 
 // Every '>' starts a new section, including a trailing one (a string ending in '>' ends with an empty section)
-function decodeChronicle(plain) {
+function decodeChronicle(plain, version = ENCODING_VERSION) {
     const sections = plain.split('>');
     if (sections.length > SECTIONS.length) throw new Error(`Expected at most ${SECTIONS.length} sections, found ${sections.length}`);
     const chronicle = {};
     sections.forEach((section, i) => {
-        setSection(chronicle, SECTIONS[i], CODECS[SECTIONS[i]].decode(section));
+        setSection(chronicle, SECTIONS[i], CODECS[SECTIONS[i]].decode(section, version));
     });
     return chronicle;
 }
@@ -432,14 +482,15 @@ function encodeExportObject(chronicle) {
 function decodeExportString(exportString) {
     const text = exportString.replace(/\s/g, '');
     if (text.length < 5) throw new Error('Export string is too short');
-    if (text.slice(0, 2) !== padEncode(ENCODING_VERSION, 2)) {
-        throw new Error(`This export string uses a different encoding version (expected ${ENCODING_VERSION})`);
+    const version = fromBase82(text.slice(0, 2));
+    if (!SUPPORTED_VERSIONS.includes(version)) {
+        throw new Error(`This export string uses encoding version ${version} (supported: ${SUPPORTED_VERSIONS.join(', ')})`);
     }
     const plain = scramble(text.slice(2, -2), true);
     if (text.slice(-2) !== padEncode(checksum(plain), 2)) {
         throw new Error('Checksum failure, the export string is likely corrupted');
     }
-    return { version: ENCODING_VERSION, ...decodeChronicle(plain) };
+    return { version, ...decodeChronicle(plain, version) };
 }
 
 // ---------- inspect ----------
@@ -454,11 +505,18 @@ function inspectExportString(exportString, isPlain = false) {
     const attempt = fn => { try { return fn(); } catch (err) { return problem(err.message); } };
 
     let plain = exportString.replace(/\s/g, '');
+    let version = ENCODING_VERSION; // a plain string is read as the current version
     if (!isPlain) {
-        const version = plain.slice(0, 2);
+        const versionRaw = plain.slice(0, 2);
         const body = plain.slice(2, -2);
         const check = plain.slice(-2);
-        lines.push(`Version   ${version}` + (version === padEncode(ENCODING_VERSION, 2) ? '' : `  ${problem(`expected ${padEncode(ENCODING_VERSION, 2)}`)}`));
+        const read = attempt(() => fromBase82(versionRaw));
+        if (SUPPORTED_VERSIONS.includes(read)) {
+            version = read;
+            lines.push(`Version   ${versionRaw} = ${version}`);
+        } else {
+            lines.push(`Version   ${versionRaw}  ${problem(`unsupported version, expected one of ${SUPPORTED_VERSIONS.join(', ')}. Reading as ${ENCODING_VERSION}`)}`);
+        }
         plain = attempt(() => scramble(body, true));
         if (plain.startsWith('!!')) return { text: [...lines, plain].join('\n'), problems };
         const expected = padEncode(checksum(plain), 2);
@@ -506,19 +564,39 @@ function inspectExportString(exportString, isPlain = false) {
         } else if (key === 'reliquary') {
             lines.push(single('', raw, RELIC_RADIX, relicName));
         } else if (key === 'foundations') {
+            const fixed = version !== 2;
+            if (fixed && raw.length !== FOUNDATIONS_WIDTH + 1) {
+                lines.push(`    ${problem(`section should be ${FOUNDATIONS_WIDTH + 1} characters`)}`);
+                return;
+            }
+            const maskRaw = fixed ? raw.slice(0, FOUNDATIONS_WIDTH) : raw;
             lines.push(attempt(() => {
-                const mask = raw === '' ? 0 : fromBase82(raw);
+                const mask = maskRaw === '' ? 0 : fromBase82(maskRaw);
                 const flipped = MAPPING.foundations.map((name, bit) => mask & (1 << bit) ? `${bit + 1} ${name}` : null).filter(Boolean);
                 if (mask >= 1 << MAPPING.foundations.length) throw new Error(`bitmask ${mask} has bits past Foundation ${MAPPING.foundations.length}`);
-                return row(raw, `0b${mask.toString(2).padStart(MAPPING.foundations.length, '0')}`, flipped.length ? `flipped: ${flipped.join(', ')}` : 'none flipped');
+                return row(maskRaw, `0b${mask.toString(2).padStart(MAPPING.foundations.length, '0')}`, flipped.length ? `flipped: ${flipped.join(', ')}` : 'none flipped');
             }));
+            if (fixed) {
+                lines.push(attempt(() => {
+                    const n = fromBase82(raw[FOUNDATIONS_WIDTH]);
+                    const name = n === 0 ? 'unset' : oathName(n);
+                    return row(raw[FOUNDATIONS_WIDTH], n, `oath: ${name}`);
+                }));
+            }
         } else if (key.startsWith('players.')) {
             const fields = raw.split('#');
             if (fields.length !== 3) { lines.push(`    ${problem(`expected 3 fields separated by #, found ${fields.length}`)}`); return; }
             const [head, legacies, relics] = fields;
             const status = STATUSES[BASE82.indexOf(head[0])];
+            const lineageWidth = version === 2 ? 0 : LINEAGE_WIDTH;
             lines.push(`    status    ${head[0] || ''} = ${status || problem(`invalid status "${head[0] || ''}"`)}`);
-            lines.push(single('  cards     ', head.slice(1), DECK_RADIX, cardName));
+            if (lineageWidth) {
+                const lineageRaw = head.slice(1, 1 + lineageWidth);
+                lines.push(lineageRaw.length < lineageWidth
+                    ? `    ${problem(`missing lineage score`)}`
+                    : attempt(() => `    lineage   ${lineageRaw} = ${fromBase82(lineageRaw)}`));
+            }
+            lines.push(single('  cards     ', head.slice(1 + lineageWidth), DECK_RADIX, cardName));
             if (legacies.length < CHUNK_WIDTH) {
                 lines.push(single('  legacies  ', legacies, LEGACY_RADIX, legacyName));
             } else {
@@ -528,11 +606,16 @@ function inspectExportString(exportString, isPlain = false) {
         }
     });
 
-    // The decoded chronicle must encode back to the same plain string
+    // The decoded chronicle must encode back to the same plain string. Older versions re-encode as the current one, so they only need to decode
     lines.push('');
     try {
-        const roundTrip = encodeChronicle(decodeChronicle(plain));
-        lines.push(roundTrip === plain ? 'Round trip  ok' : problem(`round trip differs:\n   ${roundTrip}`));
+        const decoded = decodeChronicle(plain, version);
+        if (version === ENCODING_VERSION) {
+            const roundTrip = encodeChronicle(decoded);
+            lines.push(roundTrip === plain ? 'Round trip  ok' : problem(`round trip differs:\n   ${roundTrip}`));
+        } else {
+            lines.push(`Decode  ok (version ${version} re-encodes as version ${ENCODING_VERSION}, so no round trip check)`);
+        }
     } catch (err) {
         lines.push(problem(`round trip failed: ${err.message}`));
     }
@@ -574,34 +657,64 @@ function selfTest() {
     const legacies = ['Iron Hand', 'Chronicler', 'Steadfast', 'Peacemaker', 'The Needle', 'Pathfinder']
         .map((name, i) => ({ name, flipped: i % 2 === 1 }));
     for (const count of [0, 1, 4, 5, 6]) {
-        const player = { status: 'Citizen', cards: ['Scouts'], legacies: legacies.slice(0, count), relics: ['Whistle'] };
+        const player = { status: 'Citizen', lineage: count * 1000, cards: ['Scouts'], legacies: legacies.slice(0, count), relics: ['Whistle'] };
         const field = encodePlayer(player).split('#')[1];
         assert.ok(count < 5 ? field.length <= 5 : field.length % CHUNK_WIDTH === 0, `legacy field length for ${count}`);
         assert.deepStrictEqual(decodePlayer(encodePlayer(player)), player, `player round trip with ${count} legacies`);
     }
     assert.throws(() => encodePlayer({ cards: Array(7).fill('Scouts') }), /exactly/, 'more than 6 player cards cannot be exact');
 
-    // Every Foundation combination round trips
+    // Lineage score: 2 digits after the status, 0 when not given
+    assert.strictEqual(encodePlayer({}), '000##', 'an empty player is an Exile with lineage 0');
+    assert.strictEqual(decodePlayer(encodePlayer({ lineage: MAX_LINEAGE, cards: ['Scouts'] })).lineage, MAX_LINEAGE);
+    assert.strictEqual(decodePlayer(encodePlayer({ lineage: MAX_LINEAGE + 1000 })).lineage, MAX_LINEAGE, 'a higher lineage is written as the max');
+    for (const lineage of [-1, 1.5]) assert.throws(() => encodePlayer({ lineage }), /Lineage/, `lineage ${lineage}`);
+    assert.throws(() => decodePlayer('10##'), /lineage/, 'a version 3 player needs both lineage digits');
+
+    // Foundations and Oath: always 3 characters, every Foundation combination round trips
     for (let mask = 0; mask < 64; mask++) {
-        const flipped = MAPPING.foundations.filter((_, bit) => mask & (1 << bit));
-        assert.deepStrictEqual(decodeFoundations(encodeFoundations(flipped)), flipped);
+        const value = { foundations: MAPPING.foundations.filter((_, bit) => mask & (1 << bit)), oath: OATHS[mask % OATHS.length] };
+        const section = encodeFoundations(value);
+        assert.strictEqual(section.length, 3, `Foundations section length for mask ${mask}`);
+        assert.deepStrictEqual(decodeFoundations(section), value);
     }
+    // Reserved and fan Oaths decode as their number
+    for (const oath of [5, 20, 21, 81]) {
+        assert.deepStrictEqual(decodeFoundations(encodeFoundations({ oath })), { foundations: [], oath }, `oath ${oath}`);
+    }
+    assert.throws(() => encodeFoundations({ oath: 82 }), /one digit/);
+    assert.throws(() => encodeFoundations({ oath: 'Wealth' }), /Unknown Oath/);
+    for (const section of ['', '01', '0010']) assert.throws(() => decodeFoundations(section), /3 characters/, `section "${section}"`);
+    // A missing Foundations section before the players is written as none flipped and an unset Oath, not empty
+    assert.strictEqual(encodeChronicle({ players: { red: {} } }), '>>>>>>000>000##');
+    assert.deepStrictEqual(decodeChronicle('>>>>>>000>000##'), {
+        atlasBox: [], world: [], worldDeck: [], relicDeck: [], dispossessed: [], reliquary: [],
+        foundations: [], oath: '', players: { red: { status: 'Exile', lineage: 0, cards: [], legacies: [], relics: [] } },
+    });
 
     // A full version 2 export from the Lua exporter in TTS, with Reliquary, Foundations and players (flipped legacies included).
-    // Re-encoding it must give the exact same string, which checks that Lua and JS agree
+    // Version 2 still decodes, with an unset Oath ('') and lineage 0, and re-encodes as version 3.
+    // TODO: replace with a version 3 export once the Lua exporter writes one, and check the string re-encodes exactly so Lua and JS agree
     const fullExport = '02H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,c)@b!/eoUQ9Qs!w223^(:%Lf.{eA5@(1u^DqWE$Kv#=iyHXC/5T';
     const full = decodeExportString(fullExport);
+    assert.strictEqual(full.version, 2);
     assert.deepStrictEqual(full.reliquary, ['Spiteful Mirror', 'Sigil of the Eye', 'Whistle', 'Lost Tapestry', 'Cracked Horn']);
     assert.deepStrictEqual(full.foundations, ['Teeming World']);
+    assert.strictEqual(full.oath, '');
     assert.deepStrictEqual(full.players.yellow, {
-        status: 'Chancellor', cards: ['Scouts'], relics: [],
+        status: 'Chancellor', lineage: 0, cards: ['Scouts'], relics: [],
         legacies: [{ name: 'Light Fingers', flipped: false }, { name: 'Arbiter', flipped: true }],
     });
     assert.deepStrictEqual(full.players.brown.legacies, [
         { name: 'Beloved', flipped: true }, { name: 'The Ear', flipped: false }, { name: 'Chronicler', flipped: true }]);
-    assert.deepStrictEqual(full.players.black, { status: 'Exile', cards: [], legacies: [], relics: [] });
+    assert.deepStrictEqual(full.players.black, { status: 'Exile', lineage: 0, cards: [], legacies: [], relics: [] });
     const { version, ...fullChronicle } = full;
-    assert.strictEqual(encodeExportObject(fullChronicle), fullExport, 'full Lua export round trip');
+    const fullV3 = encodeExportObject({ ...fullChronicle, oath: 'Devotion', players: { ...fullChronicle.players, red: { ...fullChronicle.players.red, lineage: 42 } } });
+    const fullV3Decoded = decodeExportString(fullV3);
+    assert.strictEqual(fullV3Decoded.version, ENCODING_VERSION);
+    assert.strictEqual(fullV3Decoded.oath, 'Devotion');
+    assert.strictEqual(fullV3Decoded.players.red.lineage, 42);
+    assert.strictEqual(encodeExportObject(fullV3Decoded), fullV3, 'full export re-encoded as version 3 round trips');
 
     // A pair from one run of the real Lua exporter in TTS: the plain string, and the scrambled string it produced.
     // The plain string ends in '>', which leaves an empty (skipped) reliquary section.
@@ -612,10 +725,12 @@ function selfTest() {
                      '00wjXpz00,,9Hd00cGcDm00aVgF=00F?%0}00i%s(Z>' +
                      '00005QqFZ:dW^&Hg{t!5-4ONLOau9x/yb37AIM2pZqK@pO3p00/c17BaBG-@qHk>';
     const luaExport = '02H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,:P';
+    // It has no Foundations or players, so it reads the same in version 2 and 3, and only the version header differs when re-encoded
     const luaChronicle = decodeChronicle(luaPlain);
     assert.strictEqual(encodeChronicle(luaChronicle), luaPlain, 'Lua plain string round trip');
-    assert.strictEqual(encodeExportObject(luaChronicle), luaExport, 'JS produces the same export string as the Lua exporter');
-    assert.deepStrictEqual(decodeExportString(luaExport), { version: ENCODING_VERSION, ...luaChronicle }, 'JS decodes the Lua export string');
+    assert.strictEqual(encodeExportObject(luaChronicle), padEncode(ENCODING_VERSION, 2) + luaExport.slice(2), 'JS scrambles the same way as the Lua exporter');
+    assert.deepStrictEqual(decodeExportString(luaExport), { version: 2, ...luaChronicle }, 'JS decodes the Lua export string');
+    assert.throws(() => decodeExportString('01' + luaExport.slice(2)), /encoding version 1/, 'unsupported versions are rejected');
 }
 
 function main(argv) {
