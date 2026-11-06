@@ -75,6 +75,64 @@ function prettyPrintTable(obj, indent)
     print(formatting .. "}")
 end
 
+function trim(text)
+    local trimmed = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    return trimmed
+end
+
+-- color's player board out on the table (in whichever state), by its memo
+function FindPlayerBoard(color)
+    for _, board in ipairs(getObjectsWithTag("PlayerBoard")) do
+        if not board.isDestroyed() and trim(board.memo) == color then
+            return board
+        end
+    end
+    return nil
+end
+
+-- How close (horizontally) a piece must be to its spot to count as there
+local PLACE_TOLERANCE = 0.05
+
+-- Seconds to wait for a piece to reach its spot before locking it wherever it is
+local PLACE_TIMEOUT = 10
+
+-- Locks object once it's within PLACE_TOLERANCE of target (a position), or after PLACE_TIMEOUT seconds,
+-- then calls onLocked if given
+function LockAtPosition(object, target, onLocked)
+    local function lock()
+        if not object.isDestroyed() then
+            object.setLock(true)
+            if onLocked then
+                onLocked()
+            end
+        end
+    end
+    Wait.condition(lock, function()
+        if object.isDestroyed() then
+            return true
+        end
+        local position = object.getPosition()
+        return (position.x - target.x) ^ 2 + (position.z - target.z) ^ 2 <= PLACE_TOLERANCE ^ 2
+    end, PLACE_TIMEOUT, lock)
+end
+
+-- Locks object once it has reached its layout spot on the mat color was withdrawn to (pos[layoutKey]),
+-- then calls onLocked if given. If color isn't withdrawn to a mat, it's locked where it is.
+function LockAtLayoutPosition(object, color, layoutKey, onLocked)
+    local bookshelf = getObjectFromGUID(GUIDs.bookshelf)
+    local withdrawnMats = bookshelf and bookshelf.getTable("withdrawnMats") or {}
+    local mat = withdrawnMats[color] and getObjectFromGUID(withdrawnMats[color])
+    if not mat then
+        object.setLock(true)
+        if onLocked then
+            onLocked()
+        end
+        return
+    end
+    local matPosition, offset = mat.getPosition(), pos[layoutKey](1)
+    LockAtPosition(object, {x = matPosition.x + offset.x, z = matPosition.z + offset.z}, onLocked)
+end
+
 function roundToNearest180(z)
     -- Round z rotation to nearest 0, 180, or 360
     local nearest = 0

@@ -1,6 +1,6 @@
 .DS_Store
 *.code-workspace
-/assets/
+/assets/*
 /legacy/
 /__pycache__/*
 /helper_scripts/

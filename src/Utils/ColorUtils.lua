@@ -28,6 +28,11 @@ TTSColorMap = BidirectionalMap(
   ['Purple'] = 'Purple',
 })
 
+-- given an oath color name, return its rgb color
+function GetOathColor(colorName)
+  return oathColors.NameToColor[colorName]
+end
+
 function ColorAsVector(color)
   return Vector(color.r, color.g, color.b)
 end
