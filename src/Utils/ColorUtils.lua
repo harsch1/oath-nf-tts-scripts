@@ -36,6 +36,11 @@ function GetOathColorHex(colorName)
   return string.format("#%02X%02X%02X", byte(color.r), byte(color.g), byte(color.b))
 end
 
+-- given an oath color name, return its rgb color
+function GetOathColor(colorName)
+  return oathColors.NameToColor[colorName]
+end
+
 function ColorAsVector(color)
   return Vector(color.r, color.g, color.b)
 end
