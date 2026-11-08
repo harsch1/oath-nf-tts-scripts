@@ -42,7 +42,7 @@ function TakeWarband(params)
                 guid = entry.guid,
                 position = params.position,
                 rotation = params.rotation,
-                smooth = false,
+                smooth = true,
                 callback_function = function(object)
                     object.removeTag(tags.warbandBank)
                 end,

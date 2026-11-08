@@ -77,6 +77,15 @@ GUIDs = {
         "b2fd07",
         "8265dc",
         "2b35bf"
+    },
+    -- the scripting zone over each of the game board's favor banks, by suit
+    favorBankZones = {
+        Discord = "8ba3a8",
+        Arcane = "eb4918",
+        Order = "c73b2a",
+        Hearth = "262733",
+        Beast = "430785",
+        Nomad = "a9e2fc"
     }
 
 }

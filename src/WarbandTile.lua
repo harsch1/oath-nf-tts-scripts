@@ -16,19 +16,8 @@ require("src/Utils/ColorUtils")
 require("src/Utils/HelperFunctions")
 require("src/Utils/Warbands")
 
--- Warbands are recognized by name as well as by tag
+-- The name spawned warbands get (just for show: a warband is recognised by its tag and the color in its memo)
 local WARBAND_NAME = "Warband"
-
-local MAX_COUNTS = {
-    Purple = 24,
-    Red = 14,
-    Yellow = 14,
-    Black = 14,
-    Blue = 14,
-    Brown = 14,
-    White = 14,
-    Pink = 14,
-}
 
 -- The area (in tile units) that counts as "on the tray", padded around the bank slots.
 local TRAY_BOUNDS = {
@@ -40,23 +29,6 @@ local TRAY_BOUNDS = {
 
 -- Where wrong-colored warbands are pushed off the tray to (tile x)
 local EJECT_X = -12.914
-
--- ==============================
--- WARBAND ASSETS
---
--- Each color's art (warbandAssetLookup) is in src/Utils/Warbands.
--- ==============================
-
-local warbandSpecularIntensityLookup = {
-    Purple = 0,
-    Red = 0,
-    Yellow = 0,
-    Black = 0.025,
-    Blue = 0,
-    Brown = 0,
-    White = 0,
-    Pink = 0,
-}
 
 -- ==============================
 -- STATE
@@ -110,16 +82,6 @@ function onLoad(savedData)
     if isChancellorTray then
         currentRole = "CHANCELLOR"
     end
-    self.addContextMenuItem("Realign Warbands", function()
-        ScheduleRepack()
-    end)
-    self.addContextMenuItem("Verify Warband Count", function()
-        if isChancellorTray then
-            VerifyPurpleTotal()
-        else
-            VerifyOwnLineageTotal()
-        end
-    end)
 
     -- LOAD RECONCILIATION
     --
@@ -136,6 +98,7 @@ function onLoad(savedData)
         end
         initialized = true
         if isChancellorTray then
+            UpdateVisibility()
             VerifyPurpleTotal()
             ScheduleRepack()
             return
@@ -601,6 +564,110 @@ function WithdrawPurpleBankPiece(callback)
     })
 end
 
+-- ==============================
+-- MUSTER BUTTON
+-- ==============================
+
+-- Where the button sits, in the tile's own units: off its bottom right corner (from the seat). The tile lies like the
+-- mat: the seat's right is +x for a button (button positions have x flipped) and the edge nearest the seat is +z.
+local MUSTER_BUTTON_POSITION = {1.40, 0.1, 1.15}
+
+-- The Chancellor tray's art is laid out differently, so its button sits further right and down
+local CHANCELLOR_MUSTER_BUTTON_POSITION = {1.8, 0.1, 1.29}
+
+-- The button's size and its "+", in the tile's own units (they grow with the tile's scale)
+local MUSTER_BUTTON_SIZE = 240
+local MUSTER_FONT_SIZE = 195
+
+-- Button colors that differ from the player's Oath color, to match their board
+local MUSTER_BUTTON_COLORS = {
+    Black = "5D7F96",
+    Purple = "926183",
+}
+
+-- Adds the muster button, in this tray's player color (while it's a bank; UpdateVisibility clears it when it hides)
+function CreateMusterButton()
+    self.clearButtons()
+    local hex = MUSTER_BUTTON_COLORS[lineageColor]
+    local color = hex and Color.fromHex(hex) or GetOathColor(lineageColor) or Color(0.5, 0.5, 0.5)
+    -- a dark "+" on light colors, a white one on the rest
+    local light = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b > 0.6
+    self.createButton({
+        click_function = "MusterOneWarband",
+        function_owner = self,
+        label = "+",
+        tooltip = "Muster one warband onto the mat (right-click: bring one back)",
+        position = isChancellorTray and CHANCELLOR_MUSTER_BUTTON_POSITION or MUSTER_BUTTON_POSITION,
+        rotation = {0, 0, 0},
+        width = MUSTER_BUTTON_SIZE,
+        height = MUSTER_BUTTON_SIZE,
+        font_size = MUSTER_FONT_SIZE,
+        color = color,
+        font_color = light and {0, 0, 0} or {1, 1, 1},
+    })
+end
+
+-- The muster button: moves one warband from this tray's bank to the mat's next free warband spot, set out the way a
+-- Citizen's are (NextWarbandSpot). A right-click (altClick) brings one back instead.
+function MusterOneWarband(_, playerColor, altClick)
+    if altClick then
+        ReturnOneWarband(playerColor)
+        return
+    end
+    local color = GetActiveTrayColor()
+    local pieces = color and GetBankPiecesOnThisTray(color) or {}
+    if #pieces == 0 then
+        Player[playerColor].broadcast("There are no warbands on this tray to muster.")
+        return
+    end
+    local mat = FindPlayerMatUnder(self)
+    local spot = mat and NextWarbandSpot(mat)
+    if not spot then
+        Player[playerColor].broadcast("There's no free warband spot on the mat.")
+        return
+    end
+    local object = pieces[#pieces]
+    object.removeTag(tags.warbandBank)
+    object.setRotationSmooth({0, 0, 0}, false, false)
+    object.setPositionSmooth(spot, false, false)
+    ScheduleRepack()
+end
+
+-- The muster button's right-click: brings one of this tray's warbands on the mat back into its bank. The one set out
+-- last on the mat's warband spots, or if there's none there, the nearest one lying anywhere else on the mat.
+function ReturnOneWarband(playerColor)
+    local color = GetActiveTrayColor()
+    local mat = FindPlayerMatUnder(self)
+    local warband = color and mat and (LastWarbandOnSpots(mat, color) or NearestLooseWarband(mat, color))
+    if not warband then
+        Player[playerColor].broadcast("There are no " .. (color or "") .. " warbands on the mat to bring back to the tray.")
+        return
+    end
+    -- a bank piece off the tray glides into its slot when the tray repacks
+    warband.addTag(tags.warbandBank)
+    ScheduleRepack()
+end
+
+-- The color warband nearest this tray that's lying loose on mat: not in a bank and not being carried
+function NearestLooseWarband(mat, color)
+    local bounds = mat.getBounds()
+    local trayPosition = self.getPosition()
+    local nearest, nearestDistance = nil, math.huge
+    for _, object in ipairs(getObjectsWithTag(tags.warband)) do
+        if isValidObject(object) and not object.hasTag(tags.warbandBank) and not isHeld(object)
+            and GetWarbandObjectColor(object) == color then
+            local position = object.getPosition()
+            local onMat = math.abs(position.x - bounds.center.x) <= bounds.size.x / 2
+                and math.abs(position.z - bounds.center.z) <= bounds.size.z / 2
+            local distance = (position.x - trayPosition.x) ^ 2 + (position.z - trayPosition.z) ^ 2
+            if onMat and distance < nearestDistance then
+                nearest, nearestDistance = object, distance
+            end
+        end
+    end
+    return nearest
+end
+
 function WithdrawPurpleFromTray()
     if not isChancellorTray then
         return nil
@@ -710,8 +777,7 @@ function onObjectDrop(playerColor, object)
         not activeColor
         or not initialized
         or not isValidObject(object)
-        or object.getName() ~= WARBAND_NAME
-        or not object.hasTag(tags.warband)
+        or GetWarbandObjectColor(object) == nil
     then
         return
     end
@@ -821,6 +887,15 @@ function RepackTray()
     end
     ArrangeBankOnTray(color, color == "Purple")
     EjectWrongColorsCurrentlyOnTray(color)
+    TellMatToRecount()
+end
+
+-- The bank has changed, so the player mat under this tray recounts its loyal warbands (it leaves out the bank's)
+function TellMatToRecount()
+    local mat = FindPlayerMatUnder(self)
+    if mat then
+        mat.call("ScheduleCount")
+    end
 end
 
 -- ==============================
@@ -889,13 +964,15 @@ end
 -- ==============================
 
 function VerifyOwnLineageTotal()
-    if not lineageColor then
+    -- Without the storage box's memo there's no count to check against (and no art to spawn with)
+    local look = lineageColor and GetWarbandLook(lineageColor)
+    if not look then
         return
     end
     local tableObjects = GetAllPhysicalWarbandsOfColor(lineageColor)
     local bag = GetLineageBag()
     local bagEntries = bag and GetContainedWarbandEntries(bag) or {}
-    local required = MAX_COUNTS[lineageColor]
+    local required = look.count
     local total = #tableObjects + #bagEntries
     if total > required then
         local excess = total - required
@@ -929,10 +1006,14 @@ end
 -- ==============================
 
 function VerifyPurpleTotal()
+    local look = GetWarbandLook("Purple")
+    if not look then
+        return
+    end
     local tableObjects = GetAllPhysicalWarbandsOfColor("Purple")
     local bag = GetPurpleReserveBag()
     local bagEntries = bag and GetContainedWarbandEntries(bag) or {}
-    local required = MAX_COUNTS.Purple
+    local required = look.count
     local total = #tableObjects + #bagEntries
     if total > required then
         local excess = total - required
@@ -1081,8 +1162,8 @@ end
 -- ==============================
 
 function SpawnWarband(colorName, worldPosition)
-    local texture = warbandAssetLookup[colorName]
-    if not texture then
+    local look = GetWarbandLook(colorName)
+    if not look then
         return nil
     end
     return spawnObjectData({
@@ -1103,6 +1184,8 @@ function SpawnWarband(colorName, worldPosition)
             Tags = {
                 tags.warband,
             },
+            -- its color, which is how it's recognised
+            Memo = colorName,
             Description = "",
             ColorDiffuse = Color(1, 1, 1),
             Locked = false,
@@ -1114,8 +1197,8 @@ function SpawnWarband(colorName, worldPosition)
             Tooltip = false,
             Hands = false,
             CustomMesh = {
-                MeshURL = "https://steamusercontent-a.akamaihd.net/ugc/28813714123459538/D5ACDDA8E85F34D00FE0657E58B9043B80DDC780/",
-                DiffuseURL = texture,
+                MeshURL = look.mesh,
+                DiffuseURL = look.diffuse,
                 NormalURL = "",
                 ColliderURL = "",
                 Convex = true,
@@ -1123,7 +1206,7 @@ function SpawnWarband(colorName, worldPosition)
                 TypeIndex = 1,
                 CustomShader = {
                     SpecularColor = Color(1, 1, 1),
-                    SpecularIntensity = warbandSpecularIntensityLookup[colorName] or 0,
+                    SpecularIntensity = look.specular,
                     SpecularSharpness = 2,
                     FresnelStrength = 0,
                 },
@@ -1245,7 +1328,7 @@ function FindMyPlayerMat()
     for _, object in ipairs(getAllObjects()) do
         if
             isValidObject(object)
-            and object.getName() == "PlayerMat"
+            and IsPlayerMat(object)
             and isPositionOnPlayerMat(referencePosition, object)
         then
             return object
@@ -1346,12 +1429,18 @@ end
 -- Every player color, so the tray can be hidden from all of them
 local ALL_COLORS = {"White", "Brown", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink", "Grey", "Black"}
 
--- Shows this tray while it's a bank (Exile, or the Chancellor tray) and hides it otherwise
+-- Shows this tray while it's a bank (Exile, or the Chancellor tray) and hides it otherwise.
+-- setInvisibleTo can't hide it from the Game Master (who sees into hidden areas), so it's also tinted see-through.
 function UpdateVisibility()
-    if GetActiveTrayColor() then
-        self.setInvisibleTo({})
+    local visible = GetActiveTrayColor() ~= nil
+    self.setInvisibleTo(visible and {} or ALL_COLORS)
+    local tint = self.getColorTint()
+    self.setColorTint({tint.r, tint.g, tint.b, visible and 1 or 0})
+    -- a see-through tint doesn't hide buttons
+    if visible then
+        CreateMusterButton()
     else
-        self.setInvisibleTo(ALL_COLORS)
+        self.clearButtons()
     end
 end
 
@@ -1384,13 +1473,13 @@ function ClearChancellorTraySpot(chancellorTray)
     local area = chancellorTray.getBounds()
     local minX, maxX = area.center.x - area.size.x / 2, area.center.x + area.size.x / 2
     local minZ, maxZ = area.center.z - area.size.z / 2, area.center.z + area.size.z / 2
-    for i = 1, MAX_COUNTS.Purple do
-        local slot = pos.warbandTraySlot(i, true)
-        if slot then
-            local spot = TrayToWorld(slot)
-            minX, maxX = math.min(minX, spot.x - SLOT_PADDING), math.max(maxX, spot.x + SLOT_PADDING)
-            minZ, maxZ = math.min(minZ, spot.z - SLOT_PADDING), math.max(maxZ, spot.z + SLOT_PADDING)
-        end
+    local i, slot = 1, pos.warbandTraySlot(1, true)
+    while slot do
+        local spot = TrayToWorld(slot)
+        minX, maxX = math.min(minX, spot.x - SLOT_PADDING), math.max(maxX, spot.x + SLOT_PADDING)
+        minZ, maxZ = math.min(minZ, spot.z - SLOT_PADDING), math.max(maxZ, spot.z + SLOT_PADDING)
+        i = i + 1
+        slot = pos.warbandTraySlot(i, true)
     end
     local boardArea = board.getBounds()
     local x = boardArea.center.x + boardArea.size.x / 2 + CLEAR_MARGIN

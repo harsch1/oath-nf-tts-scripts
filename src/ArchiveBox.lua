@@ -26,8 +26,11 @@ local ROLES = {EXILE = true, CITIZEN = true, CHANCELLOR = true}
 -- Archive can keep its own fields here too.
 -- ==============================
 
+-- archiveState.cardLayout: the player's cards, relics and lineage cards at their last deposit (from the Bookshelf), by
+-- GUID: each one's position and rotation relative to the player board
 archiveState = {
     role = "EXILE",
+    cardLayout = {},
 }
 
 -- ==============================
@@ -70,6 +73,15 @@ end
 function SetWithdrawn(withdrawn)
     archiveState.withdrawn = withdrawn == true
     UpdateAppearance()
+end
+
+-- The Bookshelf records the card layout as it deposits this player, reads it back as it withdraws them, then clears it
+function SetCardLayout(layout)
+    archiveState.cardLayout = layout or {}
+end
+
+function GetCardLayout()
+    return archiveState.cardLayout or {}
 end
 
 function SetRole(newRole)

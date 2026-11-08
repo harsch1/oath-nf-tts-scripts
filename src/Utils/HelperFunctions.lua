@@ -133,6 +133,96 @@ function LockAtLayoutPosition(object, color, layoutKey, onLocked)
     LockAtPosition(object, {x = matPosition.x + offset.x, z = matPosition.z + offset.z}, onLocked)
 end
 
+-- A player mat's memo, which is how it's recognised
+PLAYER_MAT_MEMO = "PlayerMat"
+
+function IsPlayerMat(object)
+    return trim(object.memo) == PLAYER_MAT_MEMO
+end
+
+-- The player mat under object, or nil
+function FindPlayerMatUnder(object)
+    local hits = Physics.cast({
+        origin = object.getPosition() + Vector(0, 5, 0),
+        direction = Vector(0, -1, 0),
+        type = 1,
+        max_distance = 20,
+    })
+    for _, hit in ipairs(hits) do
+        if IsPlayerMat(hit.hit_object) then
+            return hit.hit_object
+        end
+    end
+    return nil
+end
+
+-- A zone's script that has its owner (OWNER_GUID) recount, through its ScheduleCount, whenever something enters or
+-- leaves the zone. It passes the GUID of what entered or left.
+local ZONE_NOTIFIER_SCRIPT = [[
+-- Set by its owner's script: tells the owner to recount when something enters or leaves this zone, with its GUID
+local OWNER_GUID = "%s"
+
+local function tellOwner(zone, object)
+    if zone.getGUID() ~= self.getGUID() then
+        return
+    end
+    local owner = getObjectFromGUID(OWNER_GUID)
+    if owner then
+        owner.call("ScheduleCount", object and object.getGUID())
+    end
+end
+
+function onObjectEnterZone(zone, object)
+    tellOwner(zone, object)
+end
+
+function onObjectLeaveZone(zone, object)
+    tellOwner(zone, object)
+end
+]]
+
+-- Gives zone the script that tells owner to recount (ZONE_NOTIFIER_SCRIPT) unless it has it already. Returns the zone:
+-- a new reference if it had to reload for its new script to run.
+function GiveZoneNotifier(zone, owner)
+    local script = ZONE_NOTIFIER_SCRIPT:format(owner.getGUID())
+    if zone.getLuaScript() == script then
+        return zone
+    end
+    zone.setLuaScript(script)
+    return zone.reload()
+end
+
+-- What a favor or secret tagged Triple is worth
+TRIPLE_VALUE = 3
+
+-- What object is worth: 1 per piece, TRIPLE_VALUE per triple, added up over a stack
+function PieceValue(object)
+    if object.getQuantity() < 1 then
+        return object.hasTag("Triple") and TRIPLE_VALUE or 1
+    end
+    -- a stack: count each piece in it (a stack can mix singles and triples). Stacks don't support getObjects(), but
+    -- their data lists their pieces.
+    local pieces = object.getData().ContainedObjects or {}
+    if #pieces == 0 then
+        return object.getQuantity() * (object.hasTag("Triple") and TRIPLE_VALUE or 1)
+    end
+    local value = 0
+    for _, piece in ipairs(pieces) do
+        value = value + (PieceDataHasTag(piece, "Triple") and TRIPLE_VALUE or 1)
+    end
+    return value
+end
+
+-- Whether a piece's data (from getData()) has a tag, ignoring case like hasTag does
+function PieceDataHasTag(piece, wantedTag)
+    for _, tag in ipairs(piece.Tags or {}) do
+        if tag:lower() == wantedTag:lower() then
+            return true
+        end
+    end
+    return false
+end
+
 function roundToNearest180(z)
     -- Round z rotation to nearest 0, 180, or 360
     local nearest = 0
