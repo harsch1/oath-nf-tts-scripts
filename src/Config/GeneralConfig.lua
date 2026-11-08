@@ -122,6 +122,9 @@ shelfArchiveLayout = {
 shelfArchiveRotation = {x = 270, y = -90, z = 0}
 
 -- Player pieces laid out on a player mat, by tag: each uses pos[key](i) and rot[key] (relative to player mat)
+-- A player pawn's state for each role (the Chancellor's own pawn stays stored; the Chancellor pawn stands in for it)
+pawnStates = {EXILE = 1, CITIZEN = 2}
+
 playerMatLayout = {
     playerBoard        = "playerBoard",
     warbandReturn      = "warbandReturn",
@@ -303,9 +306,9 @@ stampImages = {
     Brown   = {url = "https://steamusercontent-a.akamaihd.net/ugc/10389049971267908874/72178DC2389B4835390A761F8EE743DC7DDF9540/", width = 235, height = 266},
     Pink    = {url = "https://steamusercontent-a.akamaihd.net/ugc/17468223799216771713/0122BFC59948650A486D961BA0E335FA11DBC98E/", width = 235, height = 261},
     Citizen = {url = "https://steamusercontent-a.akamaihd.net/ugc/11834703087857053328/D22BC0CC7AA76BF520D344D4023DF737ADC4BE01/", width = 125, height = 245, coverShift = 0.5},
-    -- the bookshelf's status column (local files until they're uploaded)
-    CitizenWhite = {url = "file:///D:/Downloads/oath-nf-tts-scripts/assets/foldboxes/stamps/citizen stamp white.png", width = 125, height = 245},
-    Chancellor = {url = "file:///D:/Downloads/oath-nf-tts-scripts/assets/foldboxes/stamps/chancellor stamp.png", width = 480, height = 442},
+    -- the bookshelf's status column
+    CitizenWhite = {url = "https://steamusercontent-a.akamaihd.net/ugc/9885851454270946941/AFDA5AEC36FC98CAD42B5FDB2A6D232CD0E2B474/", width = 125, height = 245},
+    Chancellor = {url = "https://steamusercontent-a.akamaihd.net/ugc/17659710526627575728/FE447D932F3D08F58D53110E9B4FC2F5315E4A3D/", width = 480, height = 442},
 }
 
 -- Site preview shown above the Atlas Box

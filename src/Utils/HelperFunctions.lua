@@ -83,6 +83,41 @@ function FindPlayerBoard(color)
     return nil
 end
 
+-- The hand zone of the seat in front of mat (handZones[i] goes with playerMats[i]), or nil
+function SeatHandFor(mat)
+    for i, matGUID in ipairs(GUIDs.playerMats) do
+        if mat and matGUID == mat.getGUID() then
+            return getObjectFromGUID(GUIDs.handZones[i] or "")
+        end
+    end
+    return nil
+end
+
+-- Makes hand's seat TTS color to, the way the Bookshelf's withdraw does: hand and the hand that was to swap colors,
+-- and whoever sat as hand's old color becomes to. Does nothing if the seat already is to, or someone else already
+-- sits as to. Returns whether it changed.
+function SetSeatColor(hand, to)
+    local from = hand and hand.getValue()
+    if not from or from == "" or from == to then
+        return false
+    end
+    if Player[to] and Player[to].seated then
+        broadcastToAll("The " .. from .. " seat can't become " .. to .. ": someone is already sitting as " .. to .. ".",
+            Color.Red)
+        return false
+    end
+    for _, other in ipairs(Hands.getHands()) do
+        if other ~= hand and other.getValue() == to then
+            other.setValue(from)
+        end
+    end
+    hand.setValue(to)
+    if Player[from] and Player[from].seated then
+        Player[from].changeColor(to)
+    end
+    return true
+end
+
 -- color's pawn out on the table (in whichever state), by its memo; "Purple" is the Chancellor's pawn
 function FindPawn(color)
     for _, pawn in ipairs(getObjectsWithTag(tags.pawn)) do

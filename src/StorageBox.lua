@@ -38,9 +38,6 @@ local ROLE_CHANGE_TIMEOUT = 15
 -- Frames after loading before the box takes calls and pushes its role to the others
 local LOAD_FRAMES = 60
 
--- Each role's pawn state (the Chancellor's own pawn is stored)
-local PAWN_STATE = {EXILE = 1, CITIZEN = 2}
-
 -- The regalia: their GUIDs and their spots on the Chancellor's mat (pos and rot in GeneralConfig)
 local REGALIA = {
     {guid = GUIDs.grandScepter, layout = "grandScepter"},
@@ -133,8 +130,10 @@ function onLoad(savedData)
             if tray and not tray.call("IsBusy") and tray.call("GetMode") ~= role then
                 tray.call("ApplyRole", role)
             end
-            -- A Chancellor withdrawn from the shelf: their own pawn stayed in their archive
+            -- A Chancellor withdrawn from the shelf: their own pawn stayed in their archive, and they sit as Purple
+            -- (nothing changes if their seat already is)
             if role == "CHANCELLOR" then
+                SetSeatColor(SeatHandFor(FindPlayerMatUnder(self)), "Purple")
                 if not FindPawn("Purple") then
                     TakePawnFromArchive(GetArchive("Purple"), PawnSpot())
                 end
@@ -161,10 +160,25 @@ function IsBusy()
     return busy
 end
 
+-- Whether the box has loaded and settled: not mid role change or reload, and its tray (if it's out) isn't busy either
+function IsReady()
+    if not initialized or busy or reloading then
+        return false
+    end
+    local tray = FindTray(color)
+    return not (tray and not tray.isDestroyed() and tray.call("IsBusy"))
+end
+
 -- Changes this player's role. fromBoard (default true) means the player board asked, its state already
 -- showing the role, so it isn't flipped back. The board calls box.call("SetRole", "CITIZEN"), which can only
--- pass the role; this box's own menu passes fromBoard = false. Returns true if the change started.
+-- pass the role; this box's own menu passes fromBoard = false, and another object (the Bookshelf's SetRole) passes
+-- {role = ..., fromBoard = false}. Returns true if the change started.
 function SetRole(newRole, fromBoard)
+    -- from another object's call, which can only pass one value: {role = ..., fromBoard = ...}
+    if type(newRole) == "table" then
+        fromBoard = newRole.fromBoard
+        newRole = newRole.role
+    end
     if fromBoard == nil then
         fromBoard = true
     end
@@ -225,12 +239,18 @@ function SetRole(newRole, fromBoard)
         SwapPawn(FindPawn(color), GetArchive(color), GetArchive("Purple"), nil)
     elseif oldRole == "CHANCELLOR" then
         -- the Chancellor's goes back, and theirs takes its place, showing their new role
-        SwapPawn(FindPawn("Purple"), GetArchive("Purple"), GetArchive(color), PAWN_STATE[role])
+        SwapPawn(FindPawn("Purple"), GetArchive("Purple"), GetArchive(color), pawnStates[role])
     else
         local pawn = FindPawn(color)
         if pawn then
-            SetPawnState(pawn, PAWN_STATE[role])
+            SetPawnState(pawn, pawnStates[role])
         end
+    end
+    -- the Chancellor sits as Purple: their seat (in front of this box's mat) changes to it, and back again after
+    if role == "CHANCELLOR" then
+        SetSeatColor(SeatHandFor(FindPlayerMatUnder(self)), "Purple")
+    elseif oldRole == "CHANCELLOR" then
+        SetSeatColor(SeatHandFor(FindPlayerMatUnder(self)), TTSColorMap.OathColorToTTSColor[color])
     end
     if role == "CHANCELLOR" then
         TakeOutRegalia()
