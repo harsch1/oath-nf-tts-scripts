@@ -320,12 +320,201 @@ function UpdateStatus()
     self.setDecals(decals)
 end
 
--- Adds delta to book i's score and shows it in its score field
+-- Adds delta to book i's score
 function ChangeScore(i, delta)
     local player = bookshelfColors[i]
-    playerScores[player] = (playerScores[player] or 0) + delta
+    SetScore({color = player, score = (playerScores[player] or 0) + delta})
+end
+
+-- ==============================
+-- PUBLIC API
+--
+-- For other objects: bookshelf.call("GetScore", "Red"), bookshelf.call("SetScore", {color = "Red", score = 5}), ...
+-- A call can only pass one value, so the setters take a table. Colors are the shelf's (bookshelfColors) and roles are
+-- "EXILE", "CITIZEN" and "CHANCELLOR"; both can be passed in any case ("red", "citizen"). What comes back is spelled
+-- the shelf's way ("Red", "CITIZEN").
+-- ==============================
+
+local API_ROLES = {EXILE = true, CITIZEN = true, CHANCELLOR = true}
+
+-- How long (seconds) Withdraw, Deposit and SetRole wait for everything to finish before calling back anyway
+local CALLBACK_TIMEOUT = 60
+
+-- Calls params' callback with result, if it has one. params.callback is the name of a function on
+-- params.callback_owner (an object; Global if it isn't given), which gets result as its one parameter. A function
+-- value works too, from this script (TTS may not pass one across from another object's).
+local function runCallback(params, result)
+    local callback = params and params.callback
+    if type(callback) == "function" then
+        callback(result)
+    elseif type(callback) == "string" then
+        local owner = params.callback_owner or Global
+        owner.call(callback, result)
+    end
+end
+
+-- Calls back {color, timedOut} once done() is true, or after CALLBACK_TIMEOUT seconds with timedOut = true
+local function callbackWhen(params, color, done)
+    if not (params and params.callback) then
+        return
+    end
+    Wait.condition(function()
+        runCallback(params, {color = color, timedOut = false})
+    end, done, CALLBACK_TIMEOUT, function()
+        runCallback(params, {color = color, timedOut = true})
+    end)
+end
+
+-- Whether color's storage box is out, loaded and settled (see the box's IsReady)
+local function storageBoxReady(color)
+    local box = getObjectFromGUID(GUIDs.storageBags[color] or "")
+    local success, ready = pcall(function()
+        return box.call("IsReady")
+    end)
+    return success and ready == true
+end
+
+-- color's place on the shelf (1 to #bookshelfColors) and its spelling there, matched in any case ("red" is "Red"), or
+-- nil if it isn't one of the shelf's colors
+local function shelfIndex(color)
+    local wanted = type(color) == "string" and color:lower()
+    for i, player in ipairs(bookshelfColors) do
+        if player:lower() == wanted then
+            return i, player
+        end
+    end
+    return nil
+end
+
+-- color's score, or nil if it isn't one of the shelf's colors
+function GetScore(color)
+    local i, player = shelfIndex(color)
+    return i and (playerScores[player] or 0) or nil
+end
+
+-- {color, score}: sets color's score and shows it in its score field. Returns whether it was set.
+function SetScore(params)
+    local i, player = shelfIndex(params and params.color)
+    local score = tonumber(params and params.score)
+    if not i or not score then
+        return false
+    end
+    playerScores[player] = score
     -- each color's score field is input (its place in bookshelfColors - 1) * 2 + 1, after its name field
-    self.editInput({index = (i - 1) * 2 + 1, value = tostring(playerScores[player])})
+    self.editInput({index = (i - 1) * 2 + 1, value = tostring(score)})
+    return true
+end
+
+-- Whether color is out on the table (withdrawn onto a mat, not in their archive)
+function IsActive(color)
+    local _, player = shelfIndex(color)
+    return player ~= nil and withdrawnMats[player] ~= nil
+end
+
+-- Whether color is being withdrawn or deposited right now (their pieces are still moving)
+function IsMoving(color)
+    local _, player = shelfIndex(color)
+    return player ~= nil and busyColors[player] == true
+end
+
+-- color's role: from their storage box while they're out (it's in charge then), otherwise from their archive.
+-- nil if it isn't one of the shelf's colors.
+function GetRole(color)
+    local _, player = shelfIndex(color)
+    if not player then
+        return nil
+    end
+    color = player
+    if IsActive(color) then
+        local box = getObjectFromGUID(GUIDs.storageBags[color] or "")
+        local success, role = pcall(function()
+            return box.call("GetRole")
+        end)
+        if success and API_ROLES[role] then
+            return role
+        end
+    end
+    local archive = getObjectFromGUID(GUIDs.playerArchives[color] or "")
+    local success, role = pcall(function()
+        return archive.call("GetRole")
+    end)
+    return success and role or nil
+end
+
+-- The Chancellor's color, or nil if nobody is
+function GetChancellor()
+    local archive = getObjectFromGUID(GUIDs.playerArchives.Purple or "")
+    local success, chancellor = pcall(function()
+        return archive.call("GetChancellor")
+    end)
+    return success and chancellor or nil
+end
+
+-- The colors that are Citizens, in shelf order
+function GetCitizens()
+    local citizens = {}
+    for _, player in ipairs(bookshelfColors) do
+        if GetRole(player) == "CITIZEN" then
+            table.insert(citizens, player)
+        end
+    end
+    return citizens
+end
+
+-- {color, role, callback, callback_owner}: changes color's role, then calls back once it has finished. Returns
+-- whether the change happened (false if it's already their role, they're
+-- being withdrawn or deposited, someone else is the Chancellor, or their pieces aren't ready).
+--   Out on the table: their storage box changes it, as if it were picked from its menu (board, tray, pawn, regalia).
+--   Stored: their archive remembers it (and the Chancellor Archive who the Chancellor is), so they come out with it;
+--   their pawn is turned to the role when it's withdrawn.
+function SetRole(params)
+    local _, color = shelfIndex(params and params.color)
+    local role = params and params.role and string.upper(tostring(params.role))
+    if not color or not API_ROLES[role] or busyColors[color] then
+        return false
+    end
+    local oldRole = GetRole(color)
+    if role == oldRole then
+        return false
+    end
+    if role == "CHANCELLOR" then
+        local chancellor = GetChancellor()
+        if chancellor and chancellor ~= color then
+            broadcastToAll(color .. " can't become the Chancellor: " .. chancellor .. " already is.", GetOathColor(color))
+            return false
+        end
+    end
+
+    if IsActive(color) then
+        local box = getObjectFromGUID(GUIDs.storageBags[color] or "")
+        local started = box and box.call("SetRole", {role = role, fromBoard = false}) or false
+        if started then
+            -- done once the box has finished the change (tray, board, and its reload if its look changes)
+            callbackWhen(params, color, function()
+                return storageBoxReady(color)
+            end)
+        end
+        return started
+    end
+
+    local archive = getObjectFromGUID(GUIDs.playerArchives[color] or "")
+    if not archive then
+        return false
+    end
+    archive.call("SetRole", role)
+    local chancellorArchive = getObjectFromGUID(GUIDs.playerArchives.Purple or "")
+    if chancellorArchive then
+        if role == "CHANCELLOR" then
+            chancellorArchive.call("SetChancellor", color)
+        elseif oldRole == "CHANCELLOR" then
+            chancellorArchive.call("SetChancellor", "")
+        end
+    end
+    -- nothing moves while they're stored, so it's done (called back next frame, like the others, not straight away)
+    callbackWhen(params, color, function()
+        return true
+    end)
+    return true
 end
 
 -- Returns everything in playerMat's play area that belongs in a player's archive.
@@ -414,10 +603,61 @@ function recordCardLayout(objects, playerArchive)
     playerArchive.call("SetCardLayout", layout)
 end
 
+-- A TTS player color in its usual spelling ("purple" is "Purple"), or nil
+local function playerColorName(player)
+    if type(player) ~= "string" or player == "" then
+        return nil
+    end
+    return player:sub(1, 1):upper() .. player:sub(2):lower()
+end
+
 -- For other objects (the storage box's "Deposit to Shelf"): bookshelf.call("Deposit", {color = "Red", player = "Red"}),
--- where player is the TTS color of whoever asked
+-- where player is the TTS color of whoever asked (they get any messages). Also takes callback and callback_owner,
+-- called back once everything is in the archive. Returns whether the deposit started.
 function Deposit(params)
-    deposit(params.color, params.player)
+    local _, color = shelfIndex(params and params.color)
+    local player = playerColorName(params and params.player)
+    if not color or not player then
+        return false
+    end
+    -- deposit tells player if it's still being moved, or isn't out
+    local wasBusy = busyColors[color]
+    deposit(color, player)
+    local started = not wasBusy and busyColors[color] == true
+    if started then
+        callbackWhen(params, color, function()
+            return not busyColors[color]
+        end)
+    end
+    return started
+end
+
+-- For other objects: bookshelf.call("Withdraw", {color = "Red", player = "Blue"}), the same as player clicking color's
+-- withdraw button. player is a TTS color: a seated player gets color's pieces on their seat's mat and becomes color (a
+-- Purple player withdrawing the Chancellor stays Purple); "Black" (the Game Master) puts them at color's own seat.
+-- Also takes callback and callback_owner, called back once the pieces are out and their storage box has loaded and
+-- settled. Returns whether the withdraw started (false if color is already out or being moved, or player can't take
+-- it: they get a message saying why).
+function Withdraw(params)
+    local _, color = shelfIndex(params and params.color)
+    local player = playerColorName(params and params.player)
+    if not color or not player then
+        return false
+    end
+    if withdrawnMats[color] then
+        Player[player].broadcast(color .. " is already out on the table.")
+        return false
+    end
+    -- withdraw tells player if it's still being moved, or they can't take it
+    local wasBusy = busyColors[color]
+    withdraw(color, player)
+    local started = not wasBusy and busyColors[color] == true
+    if started then
+        callbackWhen(params, color, function()
+            return not busyColors[color] and storageBoxReady(color)
+        end)
+    end
+    return started
 end
 
 -- Puts everything in playerColor's play area back into their archive
@@ -494,6 +734,7 @@ function withdraw(newPlayerColor, player_clicked)
     if isColorBusy(newPlayerColor, player_clicked) then return end
 
     local toChange = TTSColorMap.OathColorToTTSColor[newPlayerColor]
+    local staysPurple = player_clicked == "Purple" and GetRole(newPlayerColor) == "CHANCELLOR"
     local player_hand
     if player_clicked == "Black" then
         -- The Game Master stays Game Master: newPlayerColor goes to the mat in front of its own hand
@@ -509,20 +750,25 @@ function withdraw(newPlayerColor, player_clicked)
         end
     else
         -- Block if that player already has assets
-        local playerClickedColor = TTSColorMap.TTSColorToOathColor[player_clicked]
+        -- (the Chancellor sits as Purple)
+        local playerClickedColor = player_clicked == "Purple" and GetChancellor()
+            or TTSColorMap.TTSColorToOathColor[player_clicked]
         local currentMat = withdrawnMats[playerClickedColor] and getObjectFromGUID(withdrawnMats[playerClickedColor])
         if currentMat then
             Player[player_clicked].broadcast("You already have a ".. playerClickedColor .." player mat.\nDeposit it before withdrawing another mat.")
             return
         end
 
-        -- Swap hand colors so the clicking player becomes newPlayerColor without changing seats
+        -- Swap hand colors so the clicking player becomes newPlayerColor without changing seats. A Purple player
+        -- withdrawing the Chancellor stays Purple (the Chancellor sits as Purple), on their own seat.
         for _, hand in ipairs(Hands.getHands()) do
             local handColor = hand.getValue()
             if handColor == player_clicked then
-                hand.setValue(toChange)
+                if not staysPurple then
+                    hand.setValue(toChange)
+                end
                 player_hand = hand
-            elseif handColor == toChange then
+            elseif handColor == toChange and not staysPurple then
                 hand.setValue(player_clicked)
             end
         end
@@ -545,7 +791,7 @@ function withdraw(newPlayerColor, player_clicked)
                 return
             end
         end
-    else
+    elseif not staysPurple then
         Player[player_clicked].changeColor(toChange)
     end
     busyColors[newPlayerColor] = true
@@ -689,6 +935,14 @@ function withdraw(newPlayerColor, player_clicked)
         for _, object in ipairs(takenObjects) do
             if not object.isDestroyed() then
                 object.interactable = wasInteractable[object]
+            end
+        end
+        -- the pawn shows their role (it may have changed while they were stored, through SetRole)
+        if not pawnStaysStored then
+            local pawn = FindPawn(newPlayerColor)
+            local state = pawnStates[playerArchive.call("GetRole")]
+            if pawn and state and pawn.getStateId() ~= state then
+                pawn.setState(state)
             end
         end
 
