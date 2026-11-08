@@ -63,7 +63,21 @@ function onLoad(savedData)
         end
     end
     RefreshMenu()
-    banks = ReadBanks()
+    -- each suit's bank snap point from the memo, by its index in BANK_SUITS
+    banks = {}
+    local success, memo = pcall(JSON.decode, self.memo or "")
+    if not success or type(memo) ~= "table" then
+        print("The game board's memo has no favor bank positions.")
+    else
+        for i, suit in ipairs(BANK_SUITS) do
+            local position = memo[suit]
+            if type(position) == "table" then
+                banks[i] = {x = position.x, y = position.y, z = position.z}
+            else
+                print("The game board's memo has no position for the " .. suit .. " favor bank.")
+            end
+        end
+    end
     CreateLabels()
     for i, suit in ipairs(BANK_SUITS) do
         local zone = getObjectFromGUID(GUIDs.favorBankZones[suit] or "")
@@ -100,25 +114,6 @@ end
 function IgnoreClick()
 end
 
--- Each suit's bank snap point from the memo, by its index in BANK_SUITS
-function ReadBanks()
-    local success, memo = pcall(JSON.decode, self.memo or "")
-    if not success or type(memo) ~= "table" then
-        print("The game board's memo has no favor bank positions.")
-        return {}
-    end
-    local found = {}
-    for i, suit in ipairs(BANK_SUITS) do
-        local position = memo[suit]
-        if type(position) == "table" then
-            found[i] = {x = position.x, y = position.y, z = position.z}
-        else
-            print("The game board's memo has no position for the " .. suit .. " favor bank.")
-        end
-    end
-    return found
-end
-
 -- One label per bank, blank until there's a count to show
 function CreateLabels()
     self.clearButtons()
@@ -145,6 +140,37 @@ end
 -- ==============================
 -- COUNTS
 -- ==============================
+
+-- Bank i's favor: how much there is (triples count 3, held favor doesn't count), the top of its stack, and whether
+-- the topmost piece is a triple
+function BankFavor(i)
+    local zone = bankZones[i]
+    local count, top, topIsTriple = 0, nil, false
+    for _, object in ipairs(zone and not zone.isDestroyed() and zone.getObjects() or {}) do
+        if not object.isDestroyed() and object.held_by_color == nil and object.hasTag("Favor") then
+            count = count + PieceValue(object)
+            local bounds = object.getBounds()
+            local objectTop = bounds.center.y + bounds.size.y / 2
+            if not top or objectTop > top then
+                top, topIsTriple = objectTop, object.hasTag("Triple")
+            end
+        end
+    end
+    return count, top, topIsTriple
+end
+
+-- For other objects (the People's Favor): each favor bank left to right, as {suit, x, y, z (its snap point in the
+-- world), count}
+function GetBanks()
+    local result = {}
+    for i, suit in ipairs(BANK_SUITS) do
+        if banks[i] then
+            local spot = self.positionToWorld(banks[i])
+            table.insert(result, {suit = suit, x = spot.x, y = spot.y, z = spot.z, count = (BankFavor(i))})
+        end
+    end
+    return result
+end
 
 -- Counts once things have settled, however many favors move meanwhile. The bank zones call this with the GUID of what
 -- entered or left: a favor carried over a bank enters while it's held (and held favors aren't counted), and nothing
@@ -175,18 +201,8 @@ end
 -- the counts are hidden)
 function UpdateCounts()
     for i = 1, #BANK_SUITS do
-        local bank, zone = banks[i], bankZones[i]
-        local count, top, topIsTriple = 0, nil, false
-        for _, object in ipairs(zone and not zone.isDestroyed() and zone.getObjects() or {}) do
-            if not object.isDestroyed() and object.held_by_color == nil and object.hasTag("Favor") then
-                count = count + PieceValue(object)
-                local bounds = object.getBounds()
-                local objectTop = bounds.center.y + bounds.size.y / 2
-                if not top or objectTop > top then
-                    top, topIsTriple = objectTop, object.hasTag("Triple")
-                end
-            end
-        end
+        local bank = banks[i]
+        local count, top, topIsTriple = BankFavor(i)
         if count == 0 or not bank or not boardState.showFavorCounts then
             self.editButton({index = i - 1, label = ""})
         else

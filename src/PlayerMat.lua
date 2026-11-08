@@ -132,11 +132,33 @@ function UpdateCounts()
     if not zone or zone.isDestroyed() or not IsOverMat(zone.getPosition()) then
         return
     end
-    local loyal = LoyalColors()
+    -- the colors of warband loyal to this mat's player: their lineage's, and Purple too while they're a Citizen or the
+    -- Chancellor (their role from their storage box)
+    local loyal = {}
+    local color = GetPlayerColor()
+    if color then
+        loyal[color] = true
+        local box = FindStorageBox(color)
+        local role = box and box.call("GetRole")
+        if role == "CITIZEN" or role == "CHANCELLOR" then
+            loyal.Purple = true
+        end
+    end
+    -- the favor and secrets on the banners (by GUID), which aren't counted as the player's
+    local onBanners = {}
+    for _, entry in pairs(GUIDs.banners) do
+        local banner = getObjectFromGUID(entry.banner)
+        local success, guids = pcall(function()
+            return banner.call("GetPieceGUIDs")
+        end)
+        for guid in pairs(success and guids or {}) do
+            onBanners[guid] = true
+        end
+    end
     local secrets, favors, warbands = 0, 0, 0
     local hasBoard = false
     for _, object in ipairs(zone.getObjects()) do
-        if not object.isDestroyed() then
+        if not object.isDestroyed() and not onBanners[object.getGUID()] then
             if object.hasTag("PlayerBoard") then
                 hasBoard = true
             elseif object.hasTag("Secret") then
@@ -148,7 +170,18 @@ function UpdateCounts()
             end
         end
     end
-    warbands = math.max(0, warbands - WarbandsOnTrays())
+    -- less the bank warbands on the trays on this mat: the Chancellor tray's, and a lineage tray's while it's an Exile's
+    -- bank (a Citizen's or the Chancellor's own tray is hidden and holds none; its GetBankCount would report the
+    -- Chancellor tray's, wherever that is)
+    for _, tray in ipairs(getObjectsWithTag(tags.warbandTray)) do
+        if IsOverMat(tray.getPosition()) then
+            local isChancellorTray = trim(tray.memo) == "Purple"
+            if isChancellorTray or tray.call("GetMode") == "EXILE" then
+                warbands = warbands - (tray.call("GetBankCount") or 0)
+            end
+        end
+    end
+    warbands = math.max(0, warbands)
     local function show(count)
         return hasBoard and tostring(count) or ""
     end
@@ -172,22 +205,6 @@ function GetPlayerColor()
     return nil
 end
 
--- The colors of warband loyal to this mat's player: their lineage's, and Purple too while they're a Citizen or the
--- Chancellor (their role from their storage box)
-function LoyalColors()
-    local color = GetPlayerColor()
-    if not color then
-        return {}
-    end
-    local loyal = {[color] = true}
-    local box = FindStorageBox(color)
-    local role = box and box.call("GetRole")
-    if role == "CITIZEN" or role == "CHANCELLOR" then
-        loyal.Purple = true
-    end
-    return loyal
-end
-
 -- color's storage box out on the table, by its memo
 function FindStorageBox(color)
     for _, box in ipairs(getObjectsWithTag("warbandReturn")) do
@@ -197,22 +214,6 @@ function FindStorageBox(color)
         end
     end
     return nil
-end
-
--- The bank warbands on the trays on this mat, which aren't counted: the Chancellor tray's, and a lineage tray's while
--- it's an Exile's bank (a Citizen's or the Chancellor's own tray is hidden and holds none; its GetBankCount would
--- report the Chancellor tray's, wherever that is)
-function WarbandsOnTrays()
-    local count = 0
-    for _, tray in ipairs(getObjectsWithTag(tags.warbandTray)) do
-        if IsOverMat(tray.getPosition()) then
-            local isChancellorTray = trim(tray.memo) == "Purple"
-            if isChancellorTray or tray.call("GetMode") == "EXILE" then
-                count = count + (tray.call("GetBankCount") or 0)
-            end
-        end
-    end
-    return count
 end
 
 -- ==============================

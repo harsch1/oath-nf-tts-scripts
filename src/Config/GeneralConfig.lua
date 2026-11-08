@@ -86,19 +86,51 @@ GUIDs = {
         Hearth = "262733",
         Beast = "430785",
         Nomad = "a9e2fc"
-    }
+    },
+    -- the Chancellor's regalia, kept in the Chancellor Archive while nobody is Chancellor
+    grandScepter = "f1a8eb",
+    imperialReliquary = "abca02",
+    -- the banners: each one, the scripting zone over it, and the pieces placed on it (by tag)
+    banners = {
+        PeoplesFavor = {banner = "8c3365", zone = "4ba6b7", piece = "Favor"},
+        DarkestSecret = {banner = "4106bc", zone = "34fee1", piece = "Secret"},
+    },
+    -- the favor and secret supplies (infinite bags), single and triple
+    supplies = {
+        Favor = "a0b9c8",
+        TripleFavor = "2e70f9",
+        Secret = "96a4f2",
+        TripleSecret = "4f399b",
+    },
+    -- moved below the Darkest Secret when its Festival side resolves
+    festivalToken = "32f198"
 
 }
+
+-- Each archive's place on the bookshelf, in the shelf's own units, and how it's turned relative to the shelf. The
+-- Bookshelf puts them back here whenever it's put down.
+shelfArchiveLayout = {
+    Purple = {x = 12.355, y = 8.781, z = -0.132},
+    Red    = {x = 8.244,  y = 8.840, z = 0.472},
+    Blue   = {x = 4.244,  y = 8.840, z = 0.472},
+    Yellow = {x = 0.244,  y = 8.840, z = 0.471},
+    White  = {x = -3.756, y = 8.840, z = 0.471},
+    Black  = {x = -7.756, y = 8.840, z = 0.471},
+    Brown  = {x = -11.756, y = 8.840, z = 0.471},
+    Pink   = {x = -15.756, y = 8.840, z = 0.469},
+}
+shelfArchiveRotation = {x = 270, y = -90, z = 0}
 
 -- Player pieces laid out on a player mat, by tag: each uses pos[key](i) and rot[key] (relative to player mat)
 playerMatLayout = {
     playerBoard        = "playerBoard",
     warbandReturn      = "warbandReturn",
-    playerBank         = "playerBank",
+    Favor              = "playerBank",
     Secret             = "playerSecret",
     warbandTray        = "warbandTray",
     supplyReminder     = "supplyReminder",
     OathSupplyMarker   = "supplyMarker",
+    Pawn               = "playerPawn",
     -- every warband goes to the bank on the warband tile; i is the warband's number (up to 14 per color)
     Warband            = "warbandBank",
 }
@@ -120,6 +152,7 @@ tags = {
     warband = "Warband",
     warbandBank = "WarbandBank",     -- a warband sitting in a warband tile's bank
     warbandTray = "WarbandTray",     -- a warband tile, which runs the bank
+    pawn = "Pawn",                   -- a player's pawn (memo: its color), or the Chancellor's (memo: Purple)
 }
 
 -- Name strings to use for Atlas Slots depending on their states
@@ -170,13 +203,22 @@ pos = {
     -- relative to player mat (all mats face the same way); player board and storage set from seat 2's mat
     playerBoard =        function(i) return {x = -3.44, y = 0.06, z = 7.12} end,
     warbandReturn =      function(i) return {x = -15.036, y = 1.942, z = 7.214} end,
-    playerBank =         function(i) return {x = -11.961, y = 0.075, z = 0.971} end,
-    playerSecret =       function(i) return {x = -11.771, y = 0.294, z = -1.655} end,
+    playerBank =         function(i) return {x = -12.46, y = 0.075, z = -0.17} end,
+    playerSecret =       function(i) return {x = -12.46, y = 0.294, z = -2.44} end,
     warbandTray =        function(i) return {x = -7.037, y = 0.231, z = -0.578} end,
     -- the shared Chancellor tray, brought onto the Chancellor's mat by their warband tray
     chancellorTray =     function(i) return {x = -6.127, y = 0.231, z = -0.858} end,
     supplyReminder =     function(i) return {x = -10.801, y = 0.14, z = 4.174} end,
     supplyMarker =       function(i) return {x = -10.807, y = 0.414, z = 4.166} end,
+    -- the player's pawn, above their favor and secret (also where the Chancellor's pawn comes out if theirs isn't out)
+    playerPawn =         function(i) return {x = -12.46, y = 0.5, z = 1.13} end,
+    -- the Chancellor's regalia, side by side on grid points at the left end of the mat's lower left grid (where they go
+    -- when someone becomes Chancellor; a withdrawn Chancellor's come back where they were)
+    imperialReliquary =  function(i) return {x = -13.86, y = 0.3, z = -8.25} end,
+    grandScepter =       function(i) return {x = -8.20, y = 0.3, z = -8.25} end,
+    -- the banners, side by side just right of the regalia on the mat of the player who takes them with a
+    -- challenge/campaign: whichever comes first takes spot 1 (the left), the other spot 2
+    banner =             function(i) return i == 2 and {x = 3.4, y = 0.5, z = -8.25} or {x = -3.0, y = 0.5, z = -8.25} end,
     -- slot i of the warband tile's Exile bank, so warbands land on it before the tile repacks them.
     -- The tile is turned 180 (rot.warbandTray), so its x and z point the opposite way to the mat's.
     warbandBank =        function(i)
@@ -224,6 +266,10 @@ rot = {
     chancellorTray =     {x = 0,   y = 180, z = 0},
     supplyReminder =     {x = 0,   y = 180, z = 0},
     supplyMarker =       {x = 0,   y = 90,  z = 0},
+    playerPawn =         {x = 0,   y = 180, z = 0},
+    imperialReliquary =  {x = 0,   y = 180, z = 0},
+    grandScepter =       {x = 0,   y = 180, z = 0},
+    banner =             {x = 0,   y = 180, z = 0},
     warbandBank =        {x = 0,   y = 0,   z = 0},
 }
 
@@ -257,6 +303,9 @@ stampImages = {
     Brown   = {url = "https://steamusercontent-a.akamaihd.net/ugc/10389049971267908874/72178DC2389B4835390A761F8EE743DC7DDF9540/", width = 235, height = 266},
     Pink    = {url = "https://steamusercontent-a.akamaihd.net/ugc/17468223799216771713/0122BFC59948650A486D961BA0E335FA11DBC98E/", width = 235, height = 261},
     Citizen = {url = "https://steamusercontent-a.akamaihd.net/ugc/11834703087857053328/D22BC0CC7AA76BF520D344D4023DF737ADC4BE01/", width = 125, height = 245, coverShift = 0.5},
+    -- the bookshelf's status column (local files until they're uploaded)
+    CitizenWhite = {url = "file:///D:/Downloads/oath-nf-tts-scripts/assets/foldboxes/stamps/citizen stamp white.png", width = 125, height = 245},
+    Chancellor = {url = "file:///D:/Downloads/oath-nf-tts-scripts/assets/foldboxes/stamps/chancellor stamp.png", width = 480, height = 442},
 }
 
 -- Site preview shown above the Atlas Box
