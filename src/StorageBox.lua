@@ -48,10 +48,6 @@ local initialized = false
 local busy = false
 local reloading = false
 
--- The player's cards, relics and lineage cards at their last deposit, by GUID: each one's position and
--- rotation relative to the player board (from the Bookshelf, which reads it back from the saved state)
-local cardLayout = {}
-
 -- ==============================
 -- SAVE
 -- ==============================
@@ -59,7 +55,6 @@ local cardLayout = {}
 function GetSaveState()
     return {
         role = role,
-        cardLayout = cardLayout,
     }
 end
 
@@ -96,7 +91,6 @@ function onLoad(savedData)
         if ROLES[savedRole] then
             role = savedRole
         end
-        cardLayout = saved.cardLayout or {}
     else
         -- First load: the archive box remembers the role
         local archive = GetArchive(color)
@@ -137,12 +131,6 @@ end
 
 function IsBusy()
     return busy
-end
-
--- Called by the Bookshelf just before depositing this player: see cardLayout
-function SetCardLayout(layout)
-    cardLayout = layout or {}
-    SaveState()
 end
 
 -- Changes this player's role. fromBoard (default true) means the player board asked, its state already
@@ -332,65 +320,11 @@ function CitizenButtonSpot()
     return self.getPosition() + Vector(tray.x - box.x, tray.y - box.y + 0.1, tray.z - box.z)
 end
 
--- How close (horizontally) a warband must be to a snap point to count as filling it
-local SNAP_RADIUS = 0.3
-
--- How high above its snap point a Citizen's warband is set down, so it drops onto it
-local DROP_HEIGHT = 0.5
-
--- The player mat under this box
-function FindMat()
-    local hits = Physics.cast({
-        origin = self.getPosition() + Vector(0, 5, 0),
-        direction = Vector(0, -1, 0),
-        type = 1,
-        max_distance = 20,
-    })
-    for _, hit in ipairs(hits) do
-        if hit.hit_object.getName() == "PlayerMat" then
-            return hit.hit_object
-        end
-    end
-    return nil
-end
-
--- Where the Citizen's next warband goes: the first free Warband snap point in the two rows above the
--- player board, left to right along the top row then the bottom one (from the player's seat), or just
--- above the button if they're all taken
+-- Where the Citizen's next warband goes: the next free warband spot on the mat (NextWarbandSpot), or just above the
+-- button if they're all taken
 function NextCitizenWarbandSpot()
-    local mat = FindMat()
-    local snaps = {}
-    for _, snap in ipairs(mat and mat.getSnapPoints() or {}) do
-        for _, tag in ipairs(snap.tags or {}) do
-            if tag:lower() == tags.warband:lower() then
-                table.insert(snaps, snap.position)
-                break
-            end
-        end
-    end
-    -- In the mat's own axes the far row has the lower z, and the player's left is +x
-    table.sort(snaps, function(a, b)
-        if math.abs(a.z - b.z) > 0.01 then
-            return a.z < b.z
-        end
-        return a.x > b.x
-    end)
-    local warbands = getObjectsWithTag(tags.warband)
-    for _, snap in ipairs(snaps) do
-        local spot = mat.positionToWorld(snap)
-        local taken = false
-        for _, warband in ipairs(warbands) do
-            local position = warband.getPosition()
-            if (position.x - spot.x) ^ 2 + (position.z - spot.z) ^ 2 <= SNAP_RADIUS ^ 2 then
-                taken = true
-                break
-            end
-        end
-        if not taken then
-            return spot + Vector(0, DROP_HEIGHT, 0)
-        end
-    end
-    return CitizenButtonSpot() + Vector(0, 1, 0)
+    local mat = FindPlayerMatUnder(self)
+    return (mat and NextWarbandSpot(mat)) or CitizenButtonSpot() + Vector(0, 1, 0)
 end
 
 -- The Citizen's button: one of the Chancellor's warbands, from the Chancellor tray if it's out,
@@ -400,10 +334,8 @@ function TakeChancellorWarband(_, playerColor)
     local chancellorTray = FindBankingTray("Purple")
     local warband = chancellorTray and chancellorTray.call("WithdrawPurpleFromTray")
     if warband then
-        warband.setVelocity({0, 0, 0})
-        warband.setAngularVelocity({0, 0, 0})
-        warband.setRotation({0, 0, 0})
-        warband.setPosition(spot)
+        warband.setRotationSmooth({0, 0, 0}, false, false)
+        warband.setPositionSmooth(spot, false, false)
         return
     end
     local archive = GetArchive("Purple")

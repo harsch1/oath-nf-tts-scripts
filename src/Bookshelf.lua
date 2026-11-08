@@ -2,6 +2,7 @@
 require("src/Utils/ColorUtils")
 require("src/Config/GeneralConfig")
 require("src/Utils/HelperFunctions")
+require("src/Utils/Warbands")
 
 
 
@@ -174,18 +175,17 @@ function TransformFromBoard(relative, boardPosition, boardYaw)
     }
 end
 
--- Gives the storage box among objects (a player's mat, about to be deposited) the position and rotation of each
--- card, relic and lineage card relative to the player board, by GUID, for withdraw to put them back the same way
-function recordCardLayout(objects)
-    local board, box
+-- Gives playerArchive the position and rotation of each card, relic and lineage card among objects (its player's mat,
+-- about to be deposited) relative to the player board, by GUID, for withdraw to put them back the same way
+function recordCardLayout(objects, playerArchive)
+    local board
     for _, object in ipairs(objects) do
         if object.hasTag("PlayerBoard") then
             board = object
-        elseif object.hasTag("warbandReturn") then
-            box = object
         end
     end
-    if not board or not box then
+    if not board then
+        playerArchive.call("SetCardLayout", {})
         return
     end
     local layout = {}
@@ -197,18 +197,7 @@ function recordCardLayout(objects)
             end
         end
     end
-    box.call("SetCardLayout", layout)
-end
-
--- The card layout recordCardLayout gave the storage box stored in playerArchive (read from the box's saved state)
-function readCardLayout(playerArchive)
-    for _, data in ipairs(playerArchive.getData().ContainedObjects or {}) do
-        if dataTableContains(data.Tags or {}, "warbandReturn") then
-            local success, saved = pcall(JSON.decode, data.LuaScriptState or "")
-            return success and type(saved) == "table" and saved.cardLayout or {}
-        end
-    end
-    return {}
+    playerArchive.call("SetCardLayout", layout)
 end
 
 -- For other objects (the storage box's "Deposit to Shelf"): bookshelf.call("Deposit", {color = "Red", player = "Red"}),
@@ -229,15 +218,14 @@ function deposit(playerColor, player_clicked)
 
     busyColors[playerColor] = true
     local toStore = getObjectsOnMat(playerMat)
-    recordCardLayout(toStore)
+    recordCardLayout(toStore, playerArchive)
 
     -- A Chancellor's mat also holds the shared Chancellor tray and Purple warbands; those go back to the
     -- Chancellor Archive rather than the player's
     local chancellorArchive = getObjectFromGUID(GUIDs.playerArchives.Purple)
     local function archiveFor(object)
         local isChancellorTray = object.hasTag(tags.warbandTray) and object.memo == "Purple"
-        local isPurpleWarband = object.hasTag(tags.warband)
-            and (object.getCustomObject().diffuse or ""):find("Warband-Purple", 1, true)
+        local isPurpleWarband = GetWarbandObjectColor(object) == "Purple"
         return (isChancellorTray or isPurpleWarband) and chancellorArchive or playerArchive
     end
 
@@ -269,33 +257,42 @@ end
 function withdraw(newPlayerColor, player_clicked)
     if isColorBusy(newPlayerColor, player_clicked) then return end
 
-    -- Block if that player already has assets
-    local playerClickedColor = TTSColorMap.TTSColorToOathColor[player_clicked]
-    local currentMat = withdrawnMats[playerClickedColor] and getObjectFromGUID(withdrawnMats[playerClickedColor])
-    if currentMat then
-        Player[player_clicked].broadcast("You already have a ".. playerClickedColor .." player mat.\nDeposit it before withdrawing another mat.")
-        return
-    end
-
-    
-
-    -- Swap hand colors so the clicking player becomes newPlayerColor without changing seats
     local toChange = TTSColorMap.OathColorToTTSColor[newPlayerColor]
     local player_hand
-    for _, hand in ipairs(Hands.getHands()) do
-        local handColor = hand.getValue()
-        if handColor == player_clicked then
-            hand.setValue(toChange)
-            player_hand = hand
-        elseif handColor == toChange then
-            hand.setValue(player_clicked)
+    if player_clicked == "Black" then
+        -- The Game Master stays Game Master: newPlayerColor goes to the mat in front of its own hand
+        for _, hand in ipairs(Hands.getHands()) do
+            if hand.getValue() == toChange then
+                player_hand = hand
+                break
+            end
         end
-    end
-    if player_hand == nil then return end
-    busyColors[newPlayerColor] = true
-    Player[player_clicked].changeColor(toChange)
+        if player_hand == nil then
+            Player[player_clicked].broadcast("No seat has the " .. newPlayerColor .. " hand.")
+            return
+        end
+    else
+        -- Block if that player already has assets
+        local playerClickedColor = TTSColorMap.TTSColorToOathColor[player_clicked]
+        local currentMat = withdrawnMats[playerClickedColor] and getObjectFromGUID(withdrawnMats[playerClickedColor])
+        if currentMat then
+            Player[player_clicked].broadcast("You already have a ".. playerClickedColor .." player mat.\nDeposit it before withdrawing another mat.")
+            return
+        end
 
-    local playerArchive = getObjectFromGUID(GUIDs.playerArchives[newPlayerColor])
+        -- Swap hand colors so the clicking player becomes newPlayerColor without changing seats
+        for _, hand in ipairs(Hands.getHands()) do
+            local handColor = hand.getValue()
+            if handColor == player_clicked then
+                hand.setValue(toChange)
+                player_hand = hand
+            elseif handColor == toChange then
+                hand.setValue(player_clicked)
+            end
+        end
+        if player_hand == nil then return end
+    end
+
     -- Find which player hand matches player_hand and highlight the corresponding player mat
     local playerMat
     for i, handGUID in ipairs(GUIDs.handZones) do
@@ -304,6 +301,19 @@ function withdraw(newPlayerColor, player_clicked)
             break
         end
     end
+    if player_clicked == "Black" then
+        -- a mat can only hold one player's pieces
+        for otherColor, matGUID in pairs(withdrawnMats) do
+            if matGUID == playerMat.getGUID() then
+                Player[player_clicked].broadcast(otherColor .. " is already on the " .. newPlayerColor .. " seat's mat.")
+                return
+            end
+        end
+    else
+        Player[player_clicked].changeColor(toChange)
+    end
+    busyColors[newPlayerColor] = true
+    local playerArchive = getObjectFromGUID(GUIDs.playerArchives[newPlayerColor])
     playerMat.highlightOn(GetOathColor(newPlayerColor), 1)
     playerArchive.highlightOn(GetOathColor(newPlayerColor), 1)
     withdrawnMats[newPlayerColor] = playerMat.getGUID()
@@ -318,7 +328,7 @@ function withdraw(newPlayerColor, player_clicked)
     local warbandsStayStored = playerArchive.call("GetRole") ~= "EXILE"
 
     -- Cards, relics and lineage cards go back where they were relative to the board, which lands at its layout spot
-    local cardLayout = readCardLayout(playerArchive)
+    local cardLayout = playerArchive.call("GetCardLayout") or {}
     local boardPosition = vectorSum(playerMat.getPosition(), pos.playerBoard(1))
 
     _G["withdrawCoroutine_" .. newPlayerColor] = function()
@@ -336,6 +346,7 @@ function withdraw(newPlayerColor, player_clicked)
 
         local warbandCount = 0
         local takenObjects = {}
+        local wasInteractable = {}
         for _, entry in ipairs(entries) do
             local isWarband = dataTableContains(entry.tags or {}, "Warband")
             local slot = 1
@@ -366,6 +377,9 @@ function withdraw(newPlayerColor, player_clicked)
                 smooth = true,
                 callback_function = function(takenObject)
                     table.insert(takenObjects, takenObject)
+                    -- nobody can grab it until everything has landed
+                    wasInteractable[takenObject] = takenObject.interactable
+                    takenObject.interactable = false
                     if isWarband then
                         -- every warband starts in the bank; the warband tile only manages pieces tagged as bank
                         takenObject.addTag("WarbandBank")
@@ -376,10 +390,14 @@ function withdraw(newPlayerColor, player_clicked)
                     end
                 end
             })
+            -- One piece a frame (warbands ten frames apart): each one loads its model and script as it comes out, and
+            -- taking them all at once stalls the game while it does
             if isWarband then
                 for i = 0, 10 do
                     coroutine.yield(0)
                 end
+            else
+                coroutine.yield(0)
             end
         end
 
@@ -396,19 +414,18 @@ function withdraw(newPlayerColor, player_clicked)
             if settled then break end
             coroutine.yield(0)
         end
+        for _, object in ipairs(takenObjects) do
+            if not object.isDestroyed() then
+                object.interactable = wasInteractable[object]
+            end
+        end
 
         -- The tile now finishes loading and arranges the bank warbands onto itself
         playerArchive.setVar("withdrawing", false)
         busyColors[newPlayerColor] = nil
 
-        -- The cards are back in place, so the storage box can forget the layout (the next deposit records a new
-        -- one anyway, so it doesn't matter if the box is mid-reload and misses this)
-        local box = getObjectFromGUID(GUIDs.storageBags[newPlayerColor])
-        if box then
-            pcall(function()
-                box.call("SetCardLayout", {})
-            end)
-        end
+        -- The cards are back in place, so the archive can forget the layout (the next deposit records a new one)
+        playerArchive.call("SetCardLayout", {})
         return 1
     end
     startLuaCoroutine(self, "withdrawCoroutine_" .. newPlayerColor)
