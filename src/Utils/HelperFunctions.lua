@@ -41,13 +41,6 @@ function removeButtons(...)
     end
 end
 
-function createButtons(...)
-    local buttonsToCreate = {...}
-    for _, buttonToCreate in ipairs(buttonsToCreate) do
-        self.createButton(buttonToCreate)
-    end
-end
-
 function addTagAndReturn(item, tag)
     item.addTag(tag)
     return item
@@ -85,6 +78,16 @@ function FindPlayerBoard(color)
     for _, board in ipairs(getObjectsWithTag("PlayerBoard")) do
         if not board.isDestroyed() and trim(board.memo) == color then
             return board
+        end
+    end
+    return nil
+end
+
+-- color's pawn out on the table (in whichever state), by its memo; "Purple" is the Chancellor's pawn
+function FindPawn(color)
+    for _, pawn in ipairs(getObjectsWithTag(tags.pawn)) do
+        if not pawn.isDestroyed() and trim(pawn.memo) == color then
+            return pawn
         end
     end
     return nil

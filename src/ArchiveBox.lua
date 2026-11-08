@@ -91,6 +91,11 @@ function SetRole(newRole)
     end
     archiveState.role = newRole
     UpdateAppearance()
+    -- the bookshelf shows each player's role in its status column
+    local bookshelf = getObjectFromGUID(GUIDs.bookshelf)
+    if bookshelf then
+        bookshelf.call("UpdateStatus")
+    end
 end
 
 -- Puts object into this archive, opening it just for the put. Requests are counted so

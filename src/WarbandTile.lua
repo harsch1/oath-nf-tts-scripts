@@ -585,36 +585,41 @@ local MUSTER_BUTTON_COLORS = {
     Purple = "926183",
 }
 
--- Adds the muster button, in this tray's player color (while it's a bank; UpdateVisibility clears it when it hides)
-function CreateMusterButton()
-    self.clearButtons()
-    local hex = MUSTER_BUTTON_COLORS[lineageColor]
-    local color = hex and Color.fromHex(hex) or GetOathColor(lineageColor) or Color(0.5, 0.5, 0.5)
-    -- a dark "+" on light colors, a white one on the rest
-    local light = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b > 0.6
-    self.createButton({
-        click_function = "MusterOneWarband",
-        function_owner = self,
-        label = "+",
-        tooltip = "Muster one warband onto the mat (right-click: bring one back)",
-        position = isChancellorTray and CHANCELLOR_MUSTER_BUTTON_POSITION or MUSTER_BUTTON_POSITION,
-        rotation = {0, 0, 0},
-        width = MUSTER_BUTTON_SIZE,
-        height = MUSTER_BUTTON_SIZE,
-        font_size = MUSTER_FONT_SIZE,
-        color = color,
-        font_color = light and {0, 0, 0} or {1, 1, 1},
-    })
-end
-
 -- The muster button: moves one warband from this tray's bank to the mat's next free warband spot, set out the way a
--- Citizen's are (NextWarbandSpot). A right-click (altClick) brings one back instead.
+-- Citizen's are (NextWarbandSpot). A right-click (altClick) brings one of this tray's warbands on the mat back into its
+-- bank instead: the one set out last on the mat's warband spots, or if there's none there, the nearest one lying loose
+-- (not in a bank and not being carried) anywhere else on the mat.
 function MusterOneWarband(_, playerColor, altClick)
+    local color = GetActiveTrayColor()
     if altClick then
-        ReturnOneWarband(playerColor)
+        local mat = FindPlayerMatUnder(self)
+        local warband = color and mat and LastWarbandOnSpots(mat, color)
+        if color and mat and not warband then
+            local bounds = mat.getBounds()
+            local trayPosition = self.getPosition()
+            local nearestDistance = math.huge
+            for _, object in ipairs(getObjectsWithTag(tags.warband)) do
+                if isValidObject(object) and not object.hasTag(tags.warbandBank) and not isHeld(object)
+                    and GetWarbandObjectColor(object) == color then
+                    local position = object.getPosition()
+                    local onMat = math.abs(position.x - bounds.center.x) <= bounds.size.x / 2
+                        and math.abs(position.z - bounds.center.z) <= bounds.size.z / 2
+                    local distance = (position.x - trayPosition.x) ^ 2 + (position.z - trayPosition.z) ^ 2
+                    if onMat and distance < nearestDistance then
+                        warband, nearestDistance = object, distance
+                    end
+                end
+            end
+        end
+        if not warband then
+            Player[playerColor].broadcast("There are no " .. (color or "") .. " warbands on the mat to bring back to the tray.")
+            return
+        end
+        -- a bank piece off the tray glides into its slot when the tray repacks
+        warband.addTag(tags.warbandBank)
+        ScheduleRepack()
         return
     end
-    local color = GetActiveTrayColor()
     local pieces = color and GetBankPiecesOnThisTray(color) or {}
     if #pieces == 0 then
         Player[playerColor].broadcast("There are no warbands on this tray to muster.")
@@ -631,41 +636,6 @@ function MusterOneWarband(_, playerColor, altClick)
     object.setRotationSmooth({0, 0, 0}, false, false)
     object.setPositionSmooth(spot, false, false)
     ScheduleRepack()
-end
-
--- The muster button's right-click: brings one of this tray's warbands on the mat back into its bank. The one set out
--- last on the mat's warband spots, or if there's none there, the nearest one lying anywhere else on the mat.
-function ReturnOneWarband(playerColor)
-    local color = GetActiveTrayColor()
-    local mat = FindPlayerMatUnder(self)
-    local warband = color and mat and (LastWarbandOnSpots(mat, color) or NearestLooseWarband(mat, color))
-    if not warband then
-        Player[playerColor].broadcast("There are no " .. (color or "") .. " warbands on the mat to bring back to the tray.")
-        return
-    end
-    -- a bank piece off the tray glides into its slot when the tray repacks
-    warband.addTag(tags.warbandBank)
-    ScheduleRepack()
-end
-
--- The color warband nearest this tray that's lying loose on mat: not in a bank and not being carried
-function NearestLooseWarband(mat, color)
-    local bounds = mat.getBounds()
-    local trayPosition = self.getPosition()
-    local nearest, nearestDistance = nil, math.huge
-    for _, object in ipairs(getObjectsWithTag(tags.warband)) do
-        if isValidObject(object) and not object.hasTag(tags.warbandBank) and not isHeld(object)
-            and GetWarbandObjectColor(object) == color then
-            local position = object.getPosition()
-            local onMat = math.abs(position.x - bounds.center.x) <= bounds.size.x / 2
-                and math.abs(position.z - bounds.center.z) <= bounds.size.z / 2
-            local distance = (position.x - trayPosition.x) ^ 2 + (position.z - trayPosition.z) ^ 2
-            if onMat and distance < nearestDistance then
-                nearest, nearestDistance = object, distance
-            end
-        end
-    end
-    return nearest
 end
 
 function WithdrawPurpleFromTray()
@@ -1436,11 +1406,27 @@ function UpdateVisibility()
     self.setInvisibleTo(visible and {} or ALL_COLORS)
     local tint = self.getColorTint()
     self.setColorTint({tint.r, tint.g, tint.b, visible and 1 or 0})
-    -- a see-through tint doesn't hide buttons
+    -- a see-through tint doesn't hide buttons, so the muster button only goes on while it's a bank, in this tray's
+    -- player color
+    self.clearButtons()
     if visible then
-        CreateMusterButton()
-    else
-        self.clearButtons()
+        local hex = MUSTER_BUTTON_COLORS[lineageColor]
+        local color = hex and Color.fromHex(hex) or GetOathColor(lineageColor) or Color(0.5, 0.5, 0.5)
+        -- a dark "+" on light colors, a white one on the rest
+        local light = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b > 0.6
+        self.createButton({
+            click_function = "MusterOneWarband",
+            function_owner = self,
+            label = "+",
+            tooltip = "Muster one warband onto the mat (right-click: bring one back)",
+            position = isChancellorTray and CHANCELLOR_MUSTER_BUTTON_POSITION or MUSTER_BUTTON_POSITION,
+            rotation = {0, 0, 0},
+            width = MUSTER_BUTTON_SIZE,
+            height = MUSTER_BUTTON_SIZE,
+            font_size = MUSTER_FONT_SIZE,
+            color = color,
+            font_color = light and {0, 0, 0} or {1, 1, 1},
+        })
     end
 end
 
