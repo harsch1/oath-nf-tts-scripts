@@ -692,9 +692,27 @@ function selfTest() {
         foundations: [], oath: '', players: { red: { status: 'Exile', lineage: 0, cards: [], legacies: [], relics: [] } },
     });
 
-    // A full version 2 export from the Lua exporter in TTS, with Reliquary, Foundations and players (flipped legacies included).
-    // Version 2 still decodes, with an unset Oath ('') and lineage 0, and re-encodes as version 3.
-    // TODO: replace with a version 3 export once the Lua exporter writes one, and check the string re-encodes exactly so Lua and JS agree
+    // A full version 3 export from the Lua exporter in TTS, with Reliquary, Foundations, an Oath and players
+    // (flipped legacies and lineage scores 1 to 7 included). Re-encoding it must give the exact same string, which checks that Lua and JS agree
+    const v3Export = '03H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,c)@b!/W30&z!C-uQw(dF6Ni2k&rOzPKszQh!I4AT}rDwTx3cqDpjWuF%!o=v:aydNT-';
+    const v3 = decodeExportString(v3Export);
+    assert.strictEqual(v3.version, 3);
+    assert.deepStrictEqual(v3.reliquary, ['Spiteful Mirror', 'Sigil of the Eye', 'Whistle', 'Lost Tapestry', 'Cracked Horn']);
+    assert.deepStrictEqual(v3.foundations, ['Teeming World']);
+    assert.strictEqual(v3.oath, 'Protection');
+    PLAYER_COLORS.forEach((color, i) => assert.strictEqual(v3.players[color].lineage, i + 1, `${color} lineage`));
+    assert.deepStrictEqual(v3.players.yellow, {
+        status: 'Chancellor', lineage: 3, cards: ['Scouts'], relics: [],
+        legacies: [{ name: 'Light Fingers', flipped: false }, { name: 'Arbiter', flipped: true }],
+    });
+    assert.deepStrictEqual(v3.players.brown.legacies, [
+        { name: 'Beloved', flipped: true }, { name: 'The Ear', flipped: false }, { name: 'Chronicler', flipped: true }]);
+    assert.deepStrictEqual(v3.players.black, { status: 'Exile', lineage: 4, cards: [], legacies: [], relics: [] });
+    const { version: _v3Version, ...v3Chronicle } = v3;
+    assert.strictEqual(encodeExportObject(v3Chronicle), v3Export, 'full Lua version 3 export round trip');
+
+    // The same table exported by the Lua exporter as version 2. It still decodes, with an unset Oath ('') and lineage 0,
+    // and re-encodes as version 3
     const fullExport = '02H3uk5&m#lvuYL;KIO:Mg9FjOs)5.yU!bk{6k9tUwlHwZ}z%uTY3.}IvkwdiP9.r)s-g,XAxa!)JRjGCc5ze$;93~2=J;chc)06a}66Pn:tI#vWs~QDbnK5PpZ#&Xq36lcTLE-g359{rq/DBYLh@RBb~R;?$:iMT},~=/N@)J+fh9Ip8T1#dMl?Gf:M?tM%r/8%cL,lF{RGZOorax@0pONlP@9O.&SmJ>G6bq2t^7FJFmI>W$a,3r4:&ohBXUX)$&d%DuAJl%i~Y,c)@b!/eoUQ9Qs!w223^(:%Lf.{eA5@(1u^DqWE$Kv#=iyHXC/5T';
     const full = decodeExportString(fullExport);
     assert.strictEqual(full.version, 2);
@@ -718,7 +736,7 @@ function selfTest() {
 
     // A pair from one run of the real Lua exporter in TTS: the plain string, and the scrambled string it produced.
     // The plain string ends in '>', which leaves an empty (skipped) reliquary section.
-    // Re-encoded from a version 1 run for the version 2 alphabet (the full export above covers Lua and JS agreeing)
+    // Re-encoded from a version 1 run for the version 2 alphabet (the full version 3 export above covers Lua and JS agreeing)
     const luaPlain = 'M#5#F#7f,#6#66)#7#8#K#623#:n@-#7sK#1#0#)oy~#6Bu#6f6#L#6cv#,&CK#3#6M/#>' +
                      'D&1?8w#8U{9#>' +
                      '7+-x;V08oZ8huHKQPKOQ4J)es4@aDMR,5JBHv,5)~EF/OybDN2D5rps-D;1311dFNUBqTQ6L~;A5a>' +

@@ -101,7 +101,7 @@ end
 
 local base82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?'
 local base82Plus = base82 .. "#>" --With seperators
-local encodingVersion = 2
+local encodingVersion = 3
 
 -- Encodes a number into "Base82" with the above string as a list of all digits
 function oEncode(data)

@@ -28,6 +28,14 @@ TTSColorMap = BidirectionalMap(
   ['Purple'] = 'Purple',
 })
 
+-- hex string ("#RRGGBB") for an oath color name, or nil if it isn't one
+function GetOathColorHex(colorName)
+  local color = oathColors.NameToColor[colorName]
+  if color == nil then return nil end
+  local function byte(v) return math.floor(v * 255 + 0.5) end
+  return string.format("#%02X%02X%02X", byte(color.r), byte(color.g), byte(color.b))
+end
+
 function ColorAsVector(color)
   return Vector(color.r, color.g, color.b)
 end
