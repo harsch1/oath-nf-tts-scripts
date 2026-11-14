@@ -17,8 +17,8 @@
 
 const fs = require('fs');
 
-const ENCODING_VERSION = 3;
-const SUPPORTED_VERSIONS = [2, 3]; // Versions we can decode. Encoding always writes ENCODING_VERSION
+const ENCODING_VERSION = 4;
+const SUPPORTED_VERSIONS = [2, 3, 4]; // Versions we can decode. Encoding always writes ENCODING_VERSION
 const SCRAMBLE_SEED = 468529063; // Random seed for scrambling world output to make it less readable
 // Our 'Base82' alphabet. Printable ASCII minus ' \ ` * _ | [ ] < and ", so it is safe to use in most places
 const BASE82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?';
@@ -30,12 +30,18 @@ const RELIC_ID_OFFSET = 400;
 const CHUNK_SIZE = 5;     // ids per chunk
 const CHUNK_WIDTH = 7;    // base-82 characters per chunk
 
-// Players get one section each, in this order. A player with nothing is an empty section (so '>>' in the string)
+// Players get one section each, in this order
 const PLAYER_COLORS = ['red', 'blue', 'yellow', 'black', 'white', 'brown', 'pink'];
+// From version 4, any number of extra player sections can follow the named ones. They are numbered from here
+// (chronicle.players['8'], ['9'], ...) and the client decides which colors they are
+const FIRST_EXTRA_PLAYER = PLAYER_COLORS.length + 1;
 
 // Order the exporter writes its sections, each separated by '>' character. Player sections are named 'players.<color>'
 const SECTIONS = ['atlasBox', 'world', 'worldDeck', 'relicDeck', 'dispossessed', 'reliquary', 'foundations',
     ...PLAYER_COLORS.map(color => `players.${color}`)];
+
+// The key of the section at index i, including extra player sections past the named ones
+const sectionKey = i => i < SECTIONS.length ? SECTIONS[i] : `players.${i - SECTIONS.length + FIRST_EXTRA_PLAYER}`;
 
 // ---------- base 82 encoding/deconding ----------
 
@@ -421,13 +427,30 @@ const CODECS = {
     // One section holding two chronicle keys. It must always be 3 characters, so when missing before a later section it is written as missing
     foundations: { decode: decodeFoundations, encode: encodeFoundations, fields: ['foundations', 'oath'], missing: {} },
 };
+// A missing player before a later section is written as an empty Exile, so every section still decodes
+const PLAYER_CODEC = { decode: decodePlayer, encode: encodePlayer, missing: {} };
 for (const color of PLAYER_COLORS) {
-    CODECS[`players.${color}`] = { decode: decodePlayer, encode: encodePlayer };
+    CODECS[`players.${color}`] = PLAYER_CODEC;
+}
+const codecOf = key => CODECS[key] || PLAYER_CODEC; // keys not listed are extra players
+
+// The highest extra player number in chronicle.players, or FIRST_EXTRA_PLAYER - 1 for none. Any other unknown player key is an error
+function lastExtraPlayer(players = {}) {
+    let last = FIRST_EXTRA_PLAYER - 1;
+    for (const key of Object.keys(players)) {
+        if (PLAYER_COLORS.includes(key) || players[key] === undefined) continue;
+        const n = Number(key);
+        if (!/^\d+$/.test(key) || n < FIRST_EXTRA_PLAYER) {
+            throw new Error(`Unknown player "${key}": expected one of ${PLAYER_COLORS.join(', ')} or a number from ${FIRST_EXTRA_PLAYER}`);
+        }
+        last = Math.max(last, n);
+    }
+    return last;
 }
 
 // 'players.red' lives at chronicle.players.red, a section with fields at chronicle[field] for each field, every other key at chronicle[key]
 function getSection(chronicle, key) {
-    const { fields } = CODECS[key];
+    const { fields } = codecOf(key);
     if (fields) {
         if (fields.every(field => chronicle[field] === undefined)) return undefined;
         return Object.fromEntries(fields.map(field => [field, chronicle[field]]));
@@ -438,7 +461,7 @@ function getSection(chronicle, key) {
 
 function setSection(chronicle, key, value) {
     const [group, color] = key.split('.');
-    if (CODECS[key].fields) {
+    if (codecOf(key).fields) {
         Object.assign(chronicle, value);
     } else if (color) {
         chronicle[group] = chronicle[group] || {};
@@ -450,25 +473,32 @@ function setSection(chronicle, key, value) {
 
 // The unscrambled string: every section separated by '>'
 function encodeChronicle(chronicle) {
-    const values = SECTIONS.map(key => getSection(chronicle, key));
+    const sectionCount = SECTIONS.length + lastExtraPlayer(chronicle.players) - FIRST_EXTRA_PLAYER + 1;
+    const keys = Array.from({ length: sectionCount }, (_, i) => sectionKey(i));
+    const values = keys.map(key => getSection(chronicle, key));
     let count = values.length;
     while (count > 0 && values[count - 1] === undefined) count--; // sections are written in order, so stop after the last one present
     // A missing section before that point is written empty (or as its codec's missing value), which keeps every later section in its place
-    return SECTIONS.slice(0, count)
+    return keys.slice(0, count)
         .map((key, i) => {
-            const value = values[i] === undefined ? CODECS[key].missing : values[i];
-            return value === undefined ? '' : CODECS[key].encode(value);
+            const codec = codecOf(key);
+            const value = values[i] === undefined ? codec.missing : values[i];
+            return value === undefined ? '' : codec.encode(value);
         })
         .join('>');
 }
 
 // Every '>' starts a new section, including a trailing one (a string ending in '>' ends with an empty section)
+// Before version 4 there were no extra players, so more sections than SECTIONS is an error there
 function decodeChronicle(plain, version = ENCODING_VERSION) {
     const sections = plain.split('>');
-    if (sections.length > SECTIONS.length) throw new Error(`Expected at most ${SECTIONS.length} sections, found ${sections.length}`);
+    if (version < 4 && sections.length > SECTIONS.length) {
+        throw new Error(`Expected at most ${SECTIONS.length} sections, found ${sections.length}`);
+    }
     const chronicle = {};
     sections.forEach((section, i) => {
-        setSection(chronicle, SECTIONS[i], CODECS[SECTIONS[i]].decode(section, version));
+        const key = sectionKey(i);
+        setSection(chronicle, key, codecOf(key).decode(section, version));
     });
     return chronicle;
 }
@@ -541,9 +571,11 @@ function inspectExportString(exportString, isPlain = false) {
     };
 
     const sections = plain.split('>');
-    if (sections.length > SECTIONS.length) lines.push(problem(`expected at most ${SECTIONS.length} sections, found ${sections.length}`));
+    if (version < 4 && sections.length > SECTIONS.length) {
+        lines.push(problem(`expected at most ${SECTIONS.length} sections before version 4, found ${sections.length}`));
+    }
     sections.forEach((raw, i) => {
-        const key = SECTIONS[i] || `extra${i + 1}`;
+        const key = sectionKey(i);
         lines.push('', `[${i + 1}] ${key}  (${raw.length} chars)  ${raw}`);
         if (key === 'atlasBox' || key === 'world') {
             const tokens = raw.split('#');
@@ -709,7 +741,27 @@ function selfTest() {
         { name: 'Beloved', flipped: true }, { name: 'The Ear', flipped: false }, { name: 'Chronicler', flipped: true }]);
     assert.deepStrictEqual(v3.players.black, { status: 'Exile', lineage: 4, cards: [], legacies: [], relics: [] });
     const { version: _v3Version, ...v3Chronicle } = v3;
-    assert.strictEqual(encodeExportObject(v3Chronicle), v3Export, 'full Lua version 3 export round trip');
+    // Version 4 only added extra players, so with none only the version header differs
+    assert.strictEqual(encodeExportObject(v3Chronicle), padEncode(ENCODING_VERSION, 2) + v3Export.slice(2), 'full Lua version 3 export round trip');
+
+    // Extra players: numbered sections after pink, any amount. Gaps (and missing named players) are written as empty Exiles
+    const extra = { status: 'Citizen', lineage: 9, cards: ['Scouts'], legacies: [], relics: ['Whistle'] };
+    const emptyPlayer = { status: 'Exile', lineage: 0, cards: [], legacies: [], relics: [] };
+    const withExtras = { ...v3Chronicle, players: { ...v3Chronicle.players, 8: extra, 10: extra, 25: extra } };
+    const extrasPlain = encodeChronicle(withExtras);
+    assert.strictEqual(extrasPlain.split('>').length, SECTIONS.length + 25 - FIRST_EXTRA_PLAYER + 1, 'sections up to player 25');
+    const extrasDecoded = decodeChronicle(extrasPlain);
+    assert.deepStrictEqual(extrasDecoded.players['10'], extra);
+    assert.deepStrictEqual(extrasDecoded.players['9'], emptyPlayer, 'a gap decodes as an empty Exile');
+    assert.strictEqual(encodeChronicle(extrasDecoded), extrasPlain, 'extra players round trip');
+    assert.deepStrictEqual(decodeExportString(encodeExportObject(withExtras)).players['25'], extra, 'extra players export round trip');
+    assert.deepStrictEqual(decodeChronicle(encodeChronicle({ players: { 8: extra } })).players,
+        { ...Object.fromEntries(PLAYER_COLORS.map(color => [color, emptyPlayer])), 8: extra }, 'missing named players before an extra one');
+    for (const key of ['purple', '7', '3', '8.5', '-9']) {
+        assert.throws(() => encodeChronicle({ players: { [key]: extra } }), /Unknown player/, `player key "${key}"`);
+    }
+    assert.throws(() => decodeChronicle(extrasPlain, 3), /at most/, 'version 3 has no extra players');
+    assert.strictEqual(inspectExportString(encodeExportObject(withExtras)).problems, 0, 'inspect reads extra players');
 
     // The same table exported by the Lua exporter as version 2. It still decodes, with an unset Oath ('') and lineage 0,
     // and re-encodes as version 3
