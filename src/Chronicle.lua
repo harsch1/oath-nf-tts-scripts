@@ -16,9 +16,9 @@
 --   Dispossessed  the deck on the Dispossessed spot (or one named "Dispossessed")
 --   Reliquary     the relics in the Imperial Reliquary, on the table or in the Chancellor Archive
 --   Foundations   the face down Foundation cards, and the Oath from the "Oathkeeper of ..." tile in play
---   Players       each color's role and score from the Bookshelf, and their cards, legacies (Lineage
---                 cards, face down when dormant) and relics, from their mat if they're out on the
---                 table or from their archive if not
+--   Players       each color's role and score from the Bookshelf, and their cards, legacies (face down
+--                 when dormant) and relics, from their mat if they're out on the table or from their
+--                 archive if not
 --
 -- Cards are recognised by name (CardMapping), since every card in
 -- 2.0 is its own custom deck.
@@ -158,14 +158,14 @@ local function addCardEntries(data, out, faceDown)
     return out
 end
 
--- What a card is in the Chronicle, by its name (a Lineage card is a legacy): {kind, id, relicId}, where kind is
+-- What a card is in the Chronicle, by its name: {kind, id, relicId}, where kind is
 -- "card", "edifice", "relic" or "legacy". nil if it isn't one (where it was is noted for the summary, unless it's known
 -- not to count). No name is in more than one of CardMapping's lists.
 local function identify(entry, where)
     local ids = getLookups()
     local key = nameKey(entry.name)
     local result = nil
-    if PieceDataHasTag(entry.data, "Lineage") then
+    if PieceDataHasTag(entry.data, "Legacy") then
         result = ids.legacies[key] and {kind = "legacy", id = ids.legacies[key]}
     elseif ids.relics[key] then
         result = {kind = "relic", id = ids.relics[key].id, relicId = ids.relics[key].relicId}
@@ -540,7 +540,7 @@ local function foundationsSection()
 end
 
 -- The tags of the pieces that count for a player (their board, warbands and the rest are left out)
-local PLAYER_PIECE_TAGS = {tags.card, "Lineage", tags.relic, tags.edifice}
+local PLAYER_PIECE_TAGS = {tags.card, "Legacy", tags.relic, tags.edifice}
 
 local function isPlayerPiece(entry)
     for _, tag in ipairs(PLAYER_PIECE_TAGS) do
@@ -558,7 +558,7 @@ local function addStorageBoxEntries(boxData, entries)
     end
 end
 
--- color's cards, relics and lineage cards, as getData() entries: from their mat while they're out, otherwise from
+-- color's cards, relics and legacies, as getData() entries: from their mat while they're out, otherwise from
 -- their archive (with each card's face up or down as it was on the mat when they were deposited). Either way, what's
 -- in their storage box counts too.
 local function playerEntries(color, withdrawnMats)

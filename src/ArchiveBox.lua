@@ -26,7 +26,7 @@ local ROLES = {EXILE = true, CITIZEN = true, CHANCELLOR = true}
 -- Archive can keep its own fields here too.
 -- ==============================
 
--- archiveState.cardLayout: the player's cards, relics and lineage cards at their last deposit (from the Bookshelf), by
+-- archiveState.cardLayout: the player's cards, relics and legacies at their last deposit (from the Bookshelf), by
 -- GUID: each one's position and rotation relative to the player board
 archiveState = {
     role = "EXILE",

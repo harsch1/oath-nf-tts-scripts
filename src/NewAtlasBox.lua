@@ -1,10 +1,9 @@
--- Atlas Box scripts written by harsch and Frack and AdoptedAndy.  Last update:  05-10-2025
+-- Atlas Box scripts written by harsch and Frack and AdoptedAndy.
 
 require("src/Utils/ColorUtils")
 require("src/Config/GeneralConfig")
 require("src/Config/AtlasBoxButtons")
 require("src/Utils/HelperFunctions")
-require("src/XmlHelper")
 
 -- Objects for needed game objects.
 local objects = {

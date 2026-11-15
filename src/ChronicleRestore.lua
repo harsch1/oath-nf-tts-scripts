@@ -12,7 +12,7 @@
 -- players' pieces go into their archive through its StoreObject.
 -- Nothing is spawned or destroyed.
 --
--- It's for a fresh copy of the mod: every card starts in its home deck (the archive, edifice and lineage decks, the
+-- It's for a fresh copy of the mod: every card starts in its home deck (the archive, edifice and Legacy decks, the
 -- relic pile), every site in the Atlas Box, and nobody is out on the table. In order:
 --   1. Every card, edifice, relic, legacy and site is found, wherever it is.
 --   2. The sites come out of the Atlas Box onto locked staging spots above the table.
@@ -593,7 +593,7 @@ end
 -- THE PIECES ON THE TABLE
 -- ==============================
 
-local CARD_TAGS = {card = true, relic = true, lineage = true, edifice = true}
+local CARD_TAGS = {card = true, relic = true, legacy = true, edifice = true}
 
 -- What a piece is in the Chronicle, as a pool key: "S<index>" for a site, "L<id>" for a legacy, "I<id>" for a card,
 -- edifice or relic. nil if it isn't part of the Chronicle. Takes a name and tags (from data, a bag entry or an object).
@@ -613,7 +613,7 @@ local function keyOf(name, tagList, isCardType)
         return nil
     end
     local key = F.nameKey(name or "")
-    if PieceDataHasTag(piece, "Lineage") then
+    if PieceDataHasTag(piece, "Legacy") then
         local id = ids.legacies[key]
         return id and ("L" .. id) or nil
     end

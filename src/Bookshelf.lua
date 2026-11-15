@@ -542,7 +542,7 @@ function getObjectsOnMat(playerMat)
 end
 
 -- Pieces that keep their place on the mat between deposit and withdraw, by tag
-cardLayoutTags = {"Lineage", "Relic", "Card"}
+cardLayoutTags = {"Legacy", "Relic", "Card"}
 
 -- object's position and rotation relative to board: the offset from the board turned into the board's yaw,
 -- and the rotation with the board's yaw taken off. Turned back into the world by TransformFromBoard.
@@ -575,7 +575,7 @@ function TransformFromBoard(relative, boardPosition, boardYaw)
     }
 end
 
--- Gives playerArchive the position and rotation of each card, relic and lineage card among objects (its player's mat,
+-- Gives playerArchive the position and rotation of each card, relic and legacy among objects (its player's mat,
 -- about to be deposited) relative to the player board, by GUID, for withdraw to put them back the same way
 function recordCardLayout(objects, playerArchive)
     local board
@@ -811,7 +811,7 @@ function withdraw(newPlayerColor, player_clicked)
     -- The Chancellor's own pawn stays in their archive too: the storage box puts the Chancellor's pawn out instead
     local pawnStaysStored = playerArchive.call("GetRole") == "CHANCELLOR"
 
-    -- Cards, relics and lineage cards go back where they were relative to the board, which lands at its layout spot
+    -- Cards, relics and legacies go back where they were relative to the board, which lands at its layout spot
     local cardLayout = playerArchive.call("GetCardLayout") or {}
     local boardPosition = vectorSum(playerMat.getPosition(), pos.playerBoard(1))
 
