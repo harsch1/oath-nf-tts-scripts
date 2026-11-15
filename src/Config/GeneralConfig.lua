@@ -23,7 +23,7 @@ GUIDs = {
         Beast = "b81778",
         Discord = "c89e0e",
         Hearth = "cd0dec",
-        Nomad = "335d60",
+        Nomad = "0e7efb",
         Order = "e651fe"
     },
     scriptingTrigger = '84ebee',

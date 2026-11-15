@@ -288,6 +288,14 @@ end
 local base82 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-=/~!@$%^&(){};:,.?'
 local base82Plus = base82 .. "#>" --With seperators
 local encodingVersion = 3
+-- The encoding versions a string can be decoded from (chronicle-codec.js): 4 only added extra player sections, which
+-- the decoder reads; 2 had no Oath or lineage scores
+local decodableVersions = {[2] = true, [3] = true, [4] = true}
+
+-- A decoding problem, worded for the player who pasted the string (error() without a position)
+local function badString(message)
+    error(message, 0)
+end
 
 -- Encodes a number into "Base82" with the above string as a list of all digits
 function oEncode(data)
@@ -305,15 +313,19 @@ function oEncode(data)
     return result
 end
 
--- Decodes a string from "Base82" back into a number
+-- Decodes a string from "Base82" back into a number ("" is 0)
 function oDecode(data)
-    assert(type(data) == 'string' and data ~= '',
-        'decode expects a non-empty base64 string')
+    assert(type(data) == 'string', 'decode expects a string')
     local result = 0
     for i = 1, #data do
         local value = base82:find(data:sub(i, i), 1, true)
-        assert(value, 'decode received an invalid string')
+        if not value then
+            badString("\"" .. data:sub(i, i) .. "\" isn't a character export strings use. Is the whole string there?")
+        end
         result = result * 82 + value - 1
+    end
+    if result >= 2 ^ 53 then
+        badString("A value in the string is too large to read exactly (" .. data .. ").")
     end
     return result
 end
@@ -327,19 +339,32 @@ function oEncode2D(data)
     return padEncode(data, 2)
 end
 
+-- Encoding: the export string for the plain string s (the version, s scrambled, then a checksum of s).
+-- Decoding (isDecoding): the plain string in the export string s, and its encoding version. Errors, with a message for
+-- the player, if s can't be read (an unsupported version, a character that isn't used, or a checksum that doesn't
+-- match).
 function scramble(s, isDecoding)
     local n = #base82Plus
     local seed = 468529063 -- preselected numeric seed
     local result = ""
     local input = s
+    local version = encodingVersion
     if isDecoding then
         input = input:gsub("%s", "") --Remove whitespace
-        assert(input:sub(1,2) == oEncode2D(encodingVersion), 'this export string uses the wrong encoding version')
+        if #input < 5 then
+            badString("Paste an export string first.")
+        end
+        version = oDecode(input:sub(1, 2))
+        if not decodableVersions[version] then
+            badString("This string uses encoding version " .. version .. ", which the mod can't read (it reads 2 to 4).")
+        end
         input = input:sub(3,-3) -- Remove first and last 2 characters (version number and checksum)
     end
     for i = 1, #input do --For each 'digit' in our data string
         seed = (seed * 16807) % 2147483647 --Pseudo-random shift as we walk through: (multiplier 7^5, modulus 2^31 - 1).
-        assert(base82Plus:find(input:sub(i, i), 1, true), "scramble: invalid character in string")
+        if not base82Plus:find(input:sub(i, i), 1, true) then
+            badString("\"" .. input:sub(i, i) .. "\" isn't a character export strings use. Is the whole string there?")
+        end
         local idx = base82Plus:find(input:sub(i, i), 1, true) - 1 --Find the index of current digit in our alphabet
         
         if not isDecoding then
@@ -356,9 +381,11 @@ function scramble(s, isDecoding)
         result = oEncode2D(encodingVersion) .. result .. oEncode2D(checksum(input))
     else
         local check = s:gsub("%s", ""):sub(-2)
-        assert(check == oEncode2D(checksum(result)), 'Checksum failure, message is likely corrupted')
+        if check ~= oEncode2D(checksum(result)) then
+            badString("The string's checksum doesn't match, so it's been changed or cut short. Copy it again.")
+        end
     end
-    return result
+    return result, version
 end
 
 function checksum(s)

@@ -91,25 +91,24 @@ function onLoad(savedData)
         local success, decoded = pcall(JSON.decode, savedData)
         saved = success and decoded or nil
     end
-    if saved then
-        -- currentMode is what older versions of this script saved
-        local savedRole = saved.role or saved.currentMode
-        if ROLES[savedRole] then
-            role = savedRole
-        end
-    else
-        -- First load: the archive box remembers the role
-        local archive = GetArchive(color)
-        local archiveRole = archive and archive.call("GetRole")
-        if ROLES[archiveRole] then
-            role = archiveRole
-        end
+    -- The archive box's holds the role with priority. This box keeps up to date with it only while on the table, and the Bookshelf changes it
+    -- while this box is stored (SetRole, the Chronicle restore), so this box's saved role can be out of date
+    -- as it comes out. Its own saved role is only for when the archive is unloaded.
+    local archive = GetArchive(color)
+    local success, archiveRole = pcall(function()
+        return archive and archive.call("GetRole")
+    end)
+    local savedRole = saved and (saved.role or saved.currentMode)
+    if success and ROLES[archiveRole] then
+        role = archiveRole
+    elseif ROLES[savedRole] then
+        role = savedRole
     end
     SaveState()
     RefreshControls()
 
-    -- Wait until the box is on its spot on the mat and locked (a new look reloads the box, which loses the lock
-    -- the Bookshelf gave it, and would stop it gliding out of the archive). Then let the tray, board and
+    -- Wait until the box is on its position on the mat and locked (an appearance change reloads the box, which loses the lock
+    -- the Bookshelf gave it, and could stop it gliding out of the archive). Then let the tray, board and
     -- archives load, and take over as the authority on the role.
     LockAtLayoutPosition(self, color, "warbandReturn", function()
         Wait.frames(function()
@@ -125,9 +124,16 @@ function onLoad(savedData)
             if role == "CHANCELLOR" and chancellorArchive and not GetChancellorColor() then
                 chancellorArchive.call("SetChancellor", color)
             end
-            SyncBoard()
+            -- the board and tray need to change if the role changed while this box was stored
+            local changing = false
+            local board = FindPlayerBoard(color)
+            if board and board.call("GetRole") ~= role then
+                changing = true
+                board.call("ApplyRole", role)
+            end
             local tray = FindTray(color)
             if tray and not tray.call("IsBusy") and tray.call("GetMode") ~= role then
+                changing = true
                 tray.call("ApplyRole", role)
             end
             -- A Chancellor withdrawn from the shelf: their own pawn stayed in their archive, and they sit as Purple
@@ -139,7 +145,20 @@ function onLoad(savedData)
                 end
                 TakeOutRegalia()
             end
-            UpdateAppearance()
+            if not changing then
+                UpdateAppearance()
+                return
+            end
+            -- as for a role change from the menu: the new look (which reloads this box) only once the board and tray
+            -- have finished, so neither calls back into a box that's been replaced. Busy until then.
+            busy = true
+            local function finishLoad()
+                busy = false
+                UpdateAppearance()
+            end
+            Wait.condition(finishLoad, function()
+                return IsRoleChangeDone(FindTray(color))
+            end, ROLE_CHANGE_TIMEOUT, finishLoad)
         end, LOAD_FRAMES)
     end)
 end

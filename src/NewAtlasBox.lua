@@ -811,6 +811,85 @@ end
 -- end
 
 -- ==============================
+-- SCRIPT API
+--
+-- For other scripts only (the Chronicle restore in Global), which
+-- arrange the box exactly as they're told, without the shuffling,
+-- dealing and previews the buttons and menus do:
+--   atlasBox.call("GetSites")              the sites in the box, in order: {{guid, name}}
+--   atlasBox.call("TakeSite", {guid, position, rotation})   takes that site out there, returns it
+--   atlasBox.call("StoreSite", site)       puts site in at the back, face down
+--   atlasBox.call("FinishChronicleSetup")  marks the Chronicle as created (the site menus, no setup button) and
+--                                          shows the most recent site in the preview
+-- ==============================
+
+-- Puts by StoreSite still to go through tryObjectEnter
+scriptEnters = 0
+
+function GetSites()
+    local sites = {}
+    for _, entry in ipairs(self.getObjects()) do
+        table.insert(sites, {guid = entry.guid, name = entry.name})
+    end
+    return sites
+end
+
+function TakeSite(params)
+    -- counted, so onObjectLeaveContainer lets it go
+    pendingScriptTakes = pendingScriptTakes + 1
+    local site = self.takeObject({
+        guid = params.guid,
+        position = params.position or vectorSum(self.getPosition(), vector(0, 0, -5)),
+        rotation = params.rotation or vectorSum(self.getRotation(), vector(180, 0, 0)),
+        smooth = false,
+    })
+    if site == nil then
+        pendingScriptTakes = math.max(pendingScriptTakes - 1, 0)
+    end
+    return site
+end
+
+function StoreSite(site)
+    if site == nil or site.isDestroyed() then
+        return false
+    end
+    site.setRotation({x = 0, y = 180, z = 180})
+    scriptEnters = scriptEnters + 1
+    self.putObject(site)
+    Wait.frames(function()
+        scriptEnters = math.max(scriptEnters - 1, 0)
+    end, 2)
+    return true
+end
+
+function FinishChronicleSetup()
+    if not self.hasTag(tags.chronicleCreated) then
+        self.addTag(tags.chronicleCreated)
+        removeButtons(buttons.setup)
+        removeButtons(buttons.retry)
+        self.addContextMenuItem("RUIN and unify Sites", ruinSites)
+        self.addContextMenuItem("ALL RECENT Sites", retrieveBackAll)
+        self.addContextMenuItem("ALL FORGOTTEN Sites", retrieveRest)
+        self.addContextMenuItem("1 RECENT Site", retrieveBack)
+        self.addContextMenuItem("1 FORGOTTEN Site", retrieveOnce)
+    end
+    -- every site on the table gets its menu (once: whatever it had is cleared first), and the Relic Deck is found by
+    -- its memo, as when the box loads with the Chronicle created
+    for _, obj in ipairs(getAllObjects()) do
+        if obj.hasTag(tags.site) and obj.getDescription() ~= SITE_PREVIEW then
+            obj.clearContextMenu()
+            obj.addContextMenuItem("Preserve Site", markCard)
+            obj.addContextMenuItem("Allow Site to Ruin", unMarkCard)
+        end
+        if obj.getMemo() == "relicDeck" then
+            objects.relicDeck = obj
+        end
+    end
+    refreshRevisitPreview()
+    return true
+end
+
+-- ==============================
 -- UTILITY
 -- ==============================
 
@@ -1256,7 +1335,7 @@ function onObjectLeaveContainer(container, leave_object)
 end
 
 function tryObjectEnter(object)
-    if self.hasTag(tags.debug) then
+    if self.hasTag(tags.debug) or scriptEnters > 0 then
         return true
     else
         printToAll("Atlas Box manipulation is handled by scripting.\nIf you really want to manually change things, add the Debug tag to the Atlas Box.\n")
