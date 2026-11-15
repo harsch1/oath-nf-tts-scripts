@@ -491,3 +491,15 @@ siteIndex = {
     ["Sunken Isles"] = 22,
     ["Tidal Marshes"] = 23,
 }
+
+-- Placeholder cards still in the card sheets, in the slots of cards that were taken out of the game
+-- ("This card is now an Edifice..." denizens and "Delete this card and redraw a new relic." relics).
+-- Keyed by the card's slot in its sheet (CardID % 100). The Chronicle export asks for a replacement when it finds one
+placeholderCards = {
+    denizens = {
+        Order   = {[16] = true}, -- Tome Guardians
+        Discord = {[24] = true}, -- Boiling Lake
+        Nomad   = {[32] = true}, -- Sacred Ground
+    },
+    relics = {[32] = true, [37] = true, [40] = true},
+}

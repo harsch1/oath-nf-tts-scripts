@@ -25,6 +25,13 @@ foundationMask = nil -- flipped Foundations, read at the Foundations step and wr
 lineageScores = nil  -- {[color] = score}, set when the host saves the lineage scores at the Players step
 lineageInputs = {}   -- {[color] = text} typed so far in the lineage inputs
 
+-- Placeholder replacement (see that section)
+local pendingSlots = nil    -- slots found by the scan in progress
+local requests = nil        -- replacements still asked for: {kind = "denizen"|"relic", suit, slots}
+local onRequestsDone = nil  -- the step's continuation
+local absorbing = {}        -- GUIDs of replacement cards the script itself is putting into the box
+local pickupPositions = {}  -- where objects were picked up from, to put a rejected or used Card Archive back
+
 function onLoad(state)
     if state ~= nil then
         local loadedData = JSON.decode(state)
@@ -98,6 +105,10 @@ function instruct(message, isProblem, hideFromHost)
 end
 
 function advanceExportSteps()
+    if requests then
+        instructRequest() -- waiting on a placeholder replacement
+        return
+    end
     if currentStep == "PreInit" then
         instruct("Welcome! This exports your current Chronicle in a few steps. Follow the instructions in this window, "
             .. "and keep a backup of your save that you can reload if you need to recover.\n\n"
@@ -121,104 +132,79 @@ function advanceExportSteps()
             return
         else
             instruct("Backing up the Atlas Box...")
-            errors = 0
-            for _, siteObject in ipairs(getObjectFromGUID(GUIDs.atlasBox).getData().ContainedObjects) do
+            -- One value per site: [site index][card ids * 100, 100 000, ...]
+            local sites = {}
+            for _, siteObject in ipairs(getObjectFromGUID(GUIDs.atlasBox).getData().ContainedObjects or {}) do
                 local siteName = siteObject.Nickname
-                -- printToAll("Found site: " .. siteName)
+                local vals = {siteIndex[siteName]}
                 local mult = 100
-                local sum = siteIndex[siteName]
-                -- printToAll("Site index: " .. sum)
-                if siteObject.ChildObjects then 
-                    for _, childObject in ipairs(siteObject.ChildObjects) do
-                        if childObject.Tags then
-                            local objectType = ""
-                            for _, tag in ipairs(childObject.Tags) do
-                                objectType = ({
-                                    [tags.edifice] = tags.edifice,
-                                    [tags.relic] = tags.relic,
-                                    [tags.card] = tags.card,
-                                })[tag] or objectType
-                            end
-                            if objectType == tags.edifice then
-                                -- printToAll("Found edifice: " .. childObject.CardID)
-                                local cardId = tonumber(childObject.CardID)
-                                local deckNumber = math.floor(cardId / 100)
-                                if edificeDeckLookup[deckNumber] then
-                                    sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                                    mult = mult * 1000
-                                end
-                            end
-                            if objectType == tags.relic then
-                                -- printToAll("Found relic: " .. childObject.CardID)
-                                local cardId = tonumber(childObject.CardID)
-                                    sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
-                                    mult = mult * 1000
-                            end
-                            if objectType == tags.card then
-                                -- printToAll("Found card: " .. childObject.CardID)
-                                local cardId = tonumber(childObject.CardID)
-                                local deckNumber = math.floor(cardId / 100)
-                                if deckLookup[deckNumber] then
-                                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                                    mult = mult * 1000
-                                end
-                            end
+                local where = "the Atlas Box (" .. tostring(siteName) .. ")"
+                for _, childObject in ipairs(siteObject.ChildObjects or {}) do
+                    if childObject.Tags then
+                        local objectType = ""
+                        for _, tag in ipairs(childObject.Tags) do
+                            objectType = ({
+                                [tags.edifice] = tags.edifice,
+                                [tags.relic] = tags.relic,
+                                [tags.card] = tags.card,
+                            })[tag] or objectType
+                        end
+                        local kind = ({[tags.edifice] = "edifice", [tags.relic] = "relic", [tags.card] = "denizen"})[objectType]
+                        if kind and addCardTerm(kind, childObject.CardID, vals, 1, mult, where, "id", true) then
+                            mult = mult * 1000
                         end
                     end
                 end
-                stringSoFar = stringSoFar .. oEncode(sum) .. "#"
+                table.insert(sites, vals)
             end
-            stringSoFar = stringSoFar .. ">"
-            nextStep()
+            resolvePlaceholders(function()
+                for _, vals in ipairs(sites) do
+                    stringSoFar = stringSoFar .. oEncode(vals[1]) .. "#"
+                end
+                stringSoFar = stringSoFar .. ">"
+                nextStep()
+                advanceExportSteps() -- on to the Empire
+            end)
+            return
         end
     end
     if currentStep == "World" then
-        errors = 0
         instruct("Backing up the Empire...")
 
         function processWorldObjects(objects)
+            local sites = {}
             for _, object in ipairs(objects) do
-                local mult = 100
-                local sum = 0
-                local isEmpty = true
+                local vals = nil
                 for _, hitItem in ipairs(object) do
                     if hitItem.hasTag(tags.site) then
-                        sum = siteIndex[hitItem.getName()]
-                        isEmpty = false
+                        vals = {siteIndex[hitItem.getName()]}
                         break
                     end
                 end
-                if not isEmpty then
+                if vals then
+                    local mult = 100
                     for _, hitItem in ipairs(object) do
-                        if hitItem.hasTag(tags.edifice) then
-                            local cardId = tonumber(hitItem.getData().CardID)
-                            local deckNumber = math.floor(cardId / 100)
-                            if edificeDeckLookup[deckNumber] then
-                                sum = sum + (edificeIndex[edificeDeckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                                mult = mult * 1000
-                            end
-                        end
-                        if hitItem.hasTag(tags.relic) then
-                            local cardId = tonumber(hitItem.getData().CardID)
-                                sum = sum + (relicIndex.cards[(cardId % 100)].id)*mult
-                                mult = mult * 1000
-                        end
-                        if hitItem.hasTag(tags.card) then
-                            local cardId = tonumber(hitItem.getData().CardID)
-                            local deckNumber = math.floor(cardId / 100)
-                            if deckLookup[deckNumber] then
-                                sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                                mult = mult * 1000
+                        local cardId = nil
+                        for _, kind in ipairs({{tags.edifice, "edifice"}, {tags.relic, "relic"}, {tags.card, "denizen"}}) do
+                            if hitItem.hasTag(kind[1]) then
+                                cardId = cardId or hitItem.getData().CardID
+                                if addCardTerm(kind[2], cardId, vals, 1, mult, "the Empire", "id", true) then
+                                    mult = mult * 1000
+                                end
                             end
                         end
                     end
-                    stringSoFar = stringSoFar .. oEncode(sum) .. "#"
+                    table.insert(sites, vals)
                 end
             end
-            stringSoFar = stringSoFar .. ">"
-
-            nextStep()
-            advanceExportSteps() -- on to the World Deck instructions
+            resolvePlaceholders(function()
+                for _, vals in ipairs(sites) do
+                    stringSoFar = stringSoFar .. oEncode(vals[1]) .. "#"
+                end
+                stringSoFar = stringSoFar .. ">"
+                nextStep()
+                advanceExportSteps() -- on to the World Deck instructions
+            end)
         end
 
         local objects = {}
@@ -269,22 +255,7 @@ function advanceExportSteps()
     end
     if currentStep == "Foundations" then
         updateButton()
-        local sum = 0
-        for i, foundation in ipairs(GUIDs.foundations) do
-            local foundationCard = getObjectFromGUID(foundation.GUID)
-            if foundationCard == nil then
-                instruct("Could not find " .. foundation.name .. ". Make sure it's on the table and not in a deck, "
-                    .. "then click the Chronicle Writer again.", true)
-                return
-            end
-            if roundToNearest180(foundationCard.getRotation().z) == 180 then
-                sum = sum + 2^(i-1)
-            end
-        end
-        -- The section is written once the host picks the Oath (selectOath / skipOath)
-        foundationMask = sum
-        instruct("The host is choosing the current Oath...", false, true)
-        showExporterPanel("chronicle_oath_overlay")
+        readFoundations(false)
         return
     end
     if currentStep == "Players" then
@@ -305,7 +276,42 @@ function instructPlayers(note)
         .. "(If the player boards glitch out and get in your way, save and reload.)")
 end
 
--- ---------- Oath picker ----------
+-- ---------- Foundations and Oath picker ----------
+
+-- Reads which Foundations are flipped, then opens the Oath picker. skipMissing: Foundations that can't be found
+-- count as unflipped (the > button) instead of stopping the export
+function readFoundations(skipMissing)
+    local sum = 0
+    local missing = {}
+    for i, foundation in ipairs(GUIDs.foundations) do
+        local foundationCard = getObjectFromGUID(foundation.GUID)
+        if foundationCard == nil then
+            if not skipMissing then
+                instruct("Could not find " .. foundation.name .. ". Make sure it's on the table and not in a deck, "
+                    .. "then click the Chronicle Writer again.\n\n"
+                    .. "To skip the Foundations that can't be found, click > on the Chronicle Writer. "
+                    .. "Skipped Foundations will be on their default side.", true)
+                return
+            end
+            table.insert(missing, foundation.name)
+        elseif roundToNearest180(foundationCard.getRotation().z) == 180 then
+            sum = sum + 2^(i-1)
+        end
+    end
+    if #missing > 0 then
+        printToAll("Chronicle export: skipped " .. table.concat(missing, ", ") .. " (they will be on their default side).",
+            hexToColor("#E8A33D"))
+    end
+    -- The section is written once the host picks the Oath (selectOath / skipOath)
+    foundationMask = sum
+    instruct("The host is choosing the current Oath...", false, true)
+    showExporterPanel("chronicle_oath_overlay")
+end
+
+function skipFoundations()
+    if currentStep ~= "Foundations" then return end
+    readFoundations(true)
+end
 
 -- Foundations section: [flipped Foundations bitmask: 2 digits][Oath: 1 digit]
 function writeFoundations(oathId)
@@ -376,107 +382,304 @@ function submitLineage(player, value, id)
         or nil)
 end
 
+-- ---------- Card lookups ----------
+-- They return nil for anything not in CardMapping, so the export skips it instead of crashing.
+-- Placeholder cards (see placeholderCards in CardMapping) are checked separately, since they get replaced
+
+local function skipped(what, cardId, where)
+    printToAll("Chronicle export: skipped an unknown " .. what .. (where and (" in " .. where) or "")
+        .. " (card ID " .. tostring(cardId) .. ").", hexToColor("#E8A33D"))
+end
+
+-- The suit of a denizen placeholder card, or nil if it isn't one
+function placeholderSuit(cardId)
+    cardId = tonumber(cardId)
+    if cardId == nil then return nil end
+    local suit = deckLookup[math.floor(cardId / 100)]
+    local slots = suit and placeholderCards.denizens[suit]
+    return (slots and slots[cardId % 100]) and suit or nil
+end
+
+function isPlaceholderRelic(cardId)
+    cardId = tonumber(cardId)
+    return cardId ~= nil and placeholderCards.relics[cardId % 100] == true
+end
+
+-- Returns the export id of a denizen card. Silent when where is nil
+function denizenExportId(cardId, where)
+    cardId = tonumber(cardId)
+    if cardId == nil or placeholderSuit(cardId) then return nil end
+    local suit = deckLookup[math.floor(cardId / 100)]
+    if suit == nil then return nil end -- not a denizen deck (e.g. Visions), skipped as before
+    local entry = cardIndex[suit] and cardIndex[suit].cards[cardId % 100]
+    if entry == nil then
+        if where then skipped("card", cardId, where) end
+        return nil
+    end
+    return entry.id
+end
+
+-- Every edifice sheet slot is mapped, so only the deck needs checking
+function edificeExportId(cardId)
+    cardId = tonumber(cardId)
+    local suit = cardId and edificeDeckLookup[math.floor(cardId / 100)]
+    if suit == nil then return nil end
+    return edificeIndex[suit].cards[cardId % 100].id
+end
+
+-- Returns the relicIndex entry (with .id and .relicId). Silent when where is nil
+function relicExportEntry(cardId, where)
+    cardId = tonumber(cardId)
+    if cardId == nil or isPlaceholderRelic(cardId) then return nil end
+    local entry = relicIndex.cards[cardId % 100]
+    if entry == nil and where then skipped("relic", cardId, where) end
+    return entry
+end
+
+-- ---------- Placeholder replacement ----------
+-- Every section is a sum of id * mult terms, so a placeholder's term can be added once its replacement is known.
+-- While scanning, a placeholder registers its slot (vals[key], mult). resolvePlaceholders then asks for the replacements
+-- (the suit's Card Archive for denizens, relics for relics) and runs the step's continuation once all are filled in
+
+local function addPlaceholder(kind, suit, vals, key, mult, field)
+    pendingSlots = pendingSlots or {}
+    table.insert(pendingSlots, {kind = kind, suit = suit, vals = vals, key = key, mult = mult, field = field})
+end
+
+-- Adds one card's term to vals[key] (or registers its placeholder). Returns true if the card takes a place in the section.
+-- kind: "denizen", "edifice" or "relic". relicField: which relic id the section uses ("id" or "relicId").
+-- replace: whether placeholders here get replaced or just left out. Placeholder denizens are replaced everywhere but
+-- the Dispossessed, placeholder relics only in the Atlas Box and on the map
+function addCardTerm(kind, cardId, vals, key, mult, where, relicField, replace)
+    if kind == "denizen" then
+        local suit = placeholderSuit(cardId)
+        if suit then
+            if not replace then return false end
+            addPlaceholder("denizen", suit, vals, key, mult)
+            return true
+        end
+        local id = denizenExportId(cardId, where)
+        if id then
+            vals[key] = vals[key] + id * mult
+            return true
+        end
+    elseif kind == "edifice" then
+        local id = edificeExportId(cardId)
+        if id then
+            vals[key] = vals[key] + id * mult
+            return true
+        end
+    elseif kind == "relic" then
+        if isPlaceholderRelic(cardId) then
+            if not replace then return false end
+            addPlaceholder("relic", nil, vals, key, mult, relicField)
+            return true
+        end
+        local relic = relicExportEntry(cardId, where)
+        if relic then
+            vals[key] = vals[key] + relic[relicField] * mult
+            return true
+        end
+    end
+    return false
+end
+
+local function requestMessage(req)
+    local count = #req.slots
+    local what = req.kind == "denizen" and ("the " .. req.suit .. " Card Archive")
+        or (count .. " Relic" .. (count == 1 and "" or "s"))
+    return "Detected a placeholder card. Please put " .. what .. " into the box to replace " .. (count == 1 and "it." or "them.")
+end
+
+function instructRequest(problem)
+    instruct((problem and (problem .. "\n\n") or "") .. requestMessage(requests[1]), problem ~= nil)
+end
+
+-- Asks for replacements for the placeholders found by the scan, then calls onDone
+function resolvePlaceholders(onDone)
+    local slots = pendingSlots or {}
+    pendingSlots = nil
+    if #slots == 0 then
+        onDone()
+        return
+    end
+    requests = {}
+    local byKind = {}
+    for _, slot in ipairs(slots) do
+        local key = slot.kind .. (slot.suit or "")
+        if byKind[key] == nil then
+            byKind[key] = {kind = slot.kind, suit = slot.suit, slots = {}}
+            table.insert(requests, byKind[key])
+        end
+        table.insert(byKind[key].slots, slot)
+    end
+    onRequestsDone = onDone
+    instructRequest()
+end
+
+function onObjectPickUp(playerColor, object)
+    if requests then pickupPositions[object.getGUID()] = object.getPosition() end
+end
+
+-- Takes an object back out of the box, to where it was picked up from (or beside the box)
+local function ejectFromBox(guid, callback)
+    local position = pickupPositions[guid]
+    if position == nil then
+        local bounds = self.getBounds()
+        position = self.getPosition() + Vector(bounds.size.x / 2 + 3, 2, 0)
+    else
+        position = position + Vector(0, 1, 0)
+    end
+    pickupPositions[guid] = nil
+    self.takeObject({guid = guid, position = position, smooth = false, callback_function = callback})
+end
+
+local function finishRequest(req)
+    for _ = 1, #req.slots do
+        broadcastToAll("A placeholder " .. (req.kind == "denizen" and (req.suit .. " Card") or "Relic")
+            .. " was found and replaced with another unused replacement")
+    end
+    table.remove(requests, 1)
+    if #requests > 0 then
+        instructRequest()
+        return
+    end
+    local onDone = onRequestsDone
+    requests = nil
+    onRequestsDone = nil
+    pickupPositions = {}
+    onDone()
+end
+
+-- An object put in the box while replacements are asked for
+local function handleReplacement(object)
+    local req = requests[1]
+    local data = object.getData()
+    local cards = data.ContainedObjects or {data}
+    local guid = object.getGUID()
+
+    if req.kind == "denizen" then
+        -- Must be that suit's Card Archive: only cards of the suit, with enough real cards to pick from
+        local candidates = {}
+        local onlySuit = true
+        for _, card in ipairs(cards) do
+            local cardId = tonumber(card.CardID)
+            local suit = cardId and deckLookup[math.floor(cardId / 100)]
+            if suit ~= req.suit then onlySuit = false end
+            local id = denizenExportId(cardId)
+            if id and suit == req.suit then table.insert(candidates, {id = id, guid = card.GUID}) end
+        end
+        if not onlySuit or #candidates < #req.slots then
+            ejectFromBox(guid)
+            instructRequest("That isn't the " .. req.suit .. " Card Archive.")
+            return
+        end
+        local chosen = {}
+        for _, slot in ipairs(req.slots) do
+            local pick = table.remove(candidates, math.random(#candidates))
+            slot.vals[slot.key] = slot.vals[slot.key] + pick.id * slot.mult
+            table.insert(chosen, pick.guid)
+        end
+        -- Put the archive back, keeping the replacement cards in the box since they're now in use
+        ejectFromBox(guid, function(archive)
+            for _, cardGuid in ipairs(chosen) do
+                archive.takeObject({
+                    guid = cardGuid, position = archive.getPosition() + Vector(0, 2, 0), smooth = false,
+                    callback_function = function(card)
+                        absorbing[card.getGUID()] = true
+                        self.putObject(card)
+                    end,
+                })
+            end
+        end)
+    else
+        -- Exactly the number of relics asked for, all real relics. They stay in the box
+        local relics = {}
+        for _, card in ipairs(cards) do
+            local relic = relicExportEntry(card.CardID)
+            if relic then table.insert(relics, relic) end
+        end
+        if #relics ~= #req.slots or #cards ~= #req.slots then
+            ejectFromBox(guid)
+            instructRequest("That wasn't " .. #req.slots .. " relic" .. (#req.slots == 1 and "" or "s") .. ".")
+            return
+        end
+        for i, slot in ipairs(req.slots) do
+            slot.vals[slot.key] = slot.vals[slot.key] + relics[i][slot.field] * slot.mult
+        end
+    end
+    finishRequest(req)
+end
+
+-- Sections of cards packed 5 to a 7 digit chunk (World Deck, Dispossessed, Relic Deck). Returns the chunk values
+local function chunkedTerms(cards, kind, base, where, relicField, replace)
+    local chunks = {}
+    local mult, count = 1, 0
+    for _, card in ipairs(cards) do
+        if count == 0 then table.insert(chunks, 0) end
+        if addCardTerm(kind, card.CardID, chunks, #chunks, mult, where, relicField, replace) then
+            mult = mult * base
+            count = count + 1
+            if count == 5 then mult, count = 1, 0 end
+        elseif count == 0 then
+            table.remove(chunks) -- nothing went into the chunk just started
+        end
+    end
+    return chunks
+end
+
+-- Later chunks come first in the export
+local function chunkString(chunks)
+    local s = ""
+    for _, value in ipairs(chunks) do s = padEncode(value, 7) .. s end
+    return s
+end
+
 function onObjectEnterContainer(container, object)
     if container == self then
+        if absorbing[object.getGUID()] then
+            absorbing[object.getGUID()] = nil -- a replacement card the script put in the box itself
+            return
+        end
+        if requests then
+            handleReplacement(object)
+            return
+        end
         if currentStep == "World Deck" then
-            local mult = 1
-            local sum = 0
-            local worldDeckString = ""
-            local count = 0
-            for _, cardObject in ipairs(object.getData().ContainedObjects) do
-                local cardId = tonumber(cardObject.CardID)
-                local deckNumber = math.floor(cardId / 100)
-                if deckLookup[deckNumber] then
-                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                    mult = mult * 400
-                    count = count + 1
-                    if count == 5 then
-                        worldDeckString = padEncode(sum, 7) .. worldDeckString
-                        mult = 1
-                        sum = 0
-                        count = 0
-                    end
-                end
-            end
-            if sum > 0 then
-                worldDeckString = padEncode(sum, 7) .. worldDeckString
-            end
-            stringSoFar = stringSoFar ..worldDeckString.. ">"
-            nextStep()
-            advanceExportSteps()
+            local chunks = chunkedTerms(object.getData().ContainedObjects or {}, "denizen", 400, "the World Deck", nil, true)
+            resolvePlaceholders(function()
+                stringSoFar = stringSoFar .. chunkString(chunks) .. ">"
+                nextStep()
+                advanceExportSteps()
+            end)
             return
         end
         if currentStep == "Relic Deck" then
-            local mult = 1
-            local sum = 0
-            local relicString = ""
-            local count = 0
-            for _, cardObject in ipairs(object.getData().ContainedObjects) do
-                local cardId = tonumber(cardObject.CardID)
-                if relicIndex.cards[cardId % 100] ~= nil then
-                    sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
-                    mult = mult * 100
-                    count = count + 1
-                    if count == 5 then
-                        relicString = padEncode(sum, 7) .. relicString
-                        mult = 1
-                        sum = 0
-                        count = 0
-                    end
-                end
-            end
-            if sum > 0 then
-                relicString = padEncode(sum, 7) .. relicString
-            end
-            stringSoFar = stringSoFar .. relicString .. ">"
+            -- Placeholder relics in the deck are just left out (the card says to delete it and draw another)
+            local chunks = chunkedTerms(object.getData().ContainedObjects or {}, "relic", 100, "the Relic Deck", "relicId")
+            stringSoFar = stringSoFar .. chunkString(chunks) .. ">"
             nextStep()
             advanceExportSteps()
             return
         end
         if currentStep == "Dispossessed" then
-            local mult = 1
-            local sum = 0
-            local disposString = ""
-            local count = 0
-            for _, cardObject in ipairs(object.getData().ContainedObjects) do
-                local cardId = tonumber(cardObject.CardID)
-                local deckNumber = math.floor(cardId / 100)
-                if deckLookup[deckNumber] then
-                    sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
-                    mult = mult * 400
-                    count = count + 1
-                    if count == 5 then
-                        disposString = padEncode(sum, 7) .. disposString
-                        mult = 1
-                        sum = 0
-                        count = 0
-                    end
-                end
-            end
-            if sum > 0 then
-                disposString = padEncode(sum, 7) .. disposString
-            end
-            stringSoFar = stringSoFar ..disposString.. ">"
+            -- Placeholder cards in the Dispossessed are just left out
+            local chunks = chunkedTerms(object.getData().ContainedObjects or {}, "denizen", 400, "the Dispossessed", nil, false)
+            stringSoFar = stringSoFar .. chunkString(chunks) .. ">"
             nextStep()
             advanceExportSteps()
             return
         end
         if currentStep == "Reliquary" then
+            local data = object.getData()
+            local vals = {0}
             local mult = 1
-            local sum = 0
-            local count = 0
-            if object.getData().ContainedObjects ~= nil then
-                for _, cardObject in ipairs(object.getData().ContainedObjects) do
-                    local cardId = tonumber(cardObject.CardID)
-                    sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
+            for _, cardObject in ipairs(data.ContainedObjects or {data}) do
+                if addCardTerm("relic", cardObject.CardID, vals, 1, mult, "the Reliquary", "relicId", false) then
                     mult = mult * 100
-                    count = count + 1
                 end
-            elseif object.getData().CardID ~= nil then
-                local cardId = tonumber(object.getData().CardID)
-                sum = sum + (relicIndex.cards[cardId % 100].relicId)*mult
             end
-            stringSoFar = stringSoFar .. oEncode(sum) .. ">"
+            stringSoFar = stringSoFar .. oEncode(vals[1]) .. ">"
             nextStep()
             advanceExportSteps()
             return
@@ -496,6 +699,9 @@ function onObjectEnterContainer(container, object)
                     {color = "Brown", order=6},
                     {color = "Pink", order=7},
             }
+            -- [status: 1 digit][lineage: 2 digits][cards]#[legacies]#[relics]. The cards are a value
+            -- (cardVals[i][1]) filled in after any placeholder replacements, so each player is a head, cards and tail
+            local heads, cardVals, tails = {}, {}, {}
             if object.getData().ContainedObjects ~= nil then
                 local players = {}
                 for _, archivedPlayer in ipairs(object.getData().ContainedObjects) do
@@ -504,10 +710,10 @@ function onObjectEnterContainer(container, object)
                 for i = 1, 7 do
                     local player = players[i]
                     local playerString = ""
-                    -- [status: 1 digit][lineage: 2 digits][cards]#[legacies]#[relics]
                     local lineage = padEncode(lineageScores[playerColors[i]] or 0, 2)
                     if player == nil then
-                        playerString = "0" .. lineage .. "##"
+                        heads[i] = "0" .. lineage
+                        tails[i] = "#"
                     else
                         local status = "Exile"
                         local cardIDs = {}
@@ -546,24 +752,16 @@ function onObjectEnterContainer(container, object)
                             ["Citizen"] = 1,
                             ["Chancellor"] = 2
                         })[status]
-                        playerString = playerString .. oEncode(statusNum) .. lineage
+                        heads[i] = oEncode(statusNum) .. lineage
 
+                        local vals = {0}
                         local mult = 1
-                        local sum = 0
-                        local count = 0
                         for _, cardId in ipairs(cardIDs) do
-                            local deckNumber = math.floor(cardId / 100)
-                            if deckLookup[deckNumber] then
-                                sum = sum + (cardIndex[deckLookup[deckNumber]].cards[cardId % 100].id)*mult
+                            if addCardTerm("denizen", cardId, vals, 1, mult, playerColors[i] .. "'s archive", nil, true) then
                                 mult = mult * 400
-                                count = count + 1
                             end
                         end
-                        if sum > 0 then
-                            playerString = playerString .. oEncode(sum) .. "#"
-                        else
-                            playerString = playerString .. "#" 
-                        end
+                        cardVals[i] = vals
 
                         local mult = 1
                         local sum = 0
@@ -611,17 +809,21 @@ function onObjectEnterContainer(container, object)
                         if sum > 0 then
                             playerString = playerString .. oEncode(sum)
                         end
-                    end
-                    if i == 7 then
-                        stringSoFar = stringSoFar .. playerString
-                    else
-                        stringSoFar = stringSoFar .. playerString .. ">"
+                        tails[i] = playerString
                     end
                 end
             end
-            instruct("Done! The host is saving the Chronicle export.", false, true)
-            nextStep()
-            updateButton()
+            resolvePlaceholders(function()
+                for i = 1, 7 do
+                    if heads[i] then
+                        local cards = (cardVals[i] and cardVals[i][1] > 0) and oEncode(cardVals[i][1]) or ""
+                        stringSoFar = stringSoFar .. heads[i] .. cards .. "#" .. tails[i] .. (i < 7 and ">" or "")
+                    end
+                end
+                instruct("Done! The host is saving the Chronicle export.", false, true)
+                nextStep()
+                updateButton()
+            end)
         end
     end
 end
@@ -656,6 +858,10 @@ function outputString()
 end
 
 function skipReliquary()
+    if requests then
+        instructRequest()
+        return
+    end
     stringSoFar = stringSoFar .. ">"
     nextStep()
     advanceExportSteps()
@@ -703,12 +909,12 @@ function makeButton()
     -- elseif currentStep == "World Deck" then        
     -- elseif currentStep == "Relic Deck" then        
     -- elseif currentStep == "Dispossessed" then       
-    elseif currentStep == "Reliquary" then
+    elseif currentStep == "Reliquary" or currentStep == "Foundations" then
         b.label = "Current Step:\n" .. currentStep
         b.width = 650
         b.position = {1.4, -0.15, 0}
         local b2 =  {
-            click_function = "skipReliquary",
+            click_function = currentStep == "Reliquary" and "skipReliquary" or "skipFoundations",
             function_owner = self,
             label          = ">",
             position       = {1.05, -0.15, 0},
@@ -723,8 +929,7 @@ function makeButton()
         }
         self.createButton(b2)
 
-    -- elseif currentStep == "Foundations" then       
-    -- elseif currentStep == "Players" then        
+    -- elseif currentStep == "Players" then
     else
         b.label = "Current Step:\n" .. currentStep
     end
